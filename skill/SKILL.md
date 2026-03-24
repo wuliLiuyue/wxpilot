@@ -1,3 +1,8 @@
+---
+name: wxpilot
+description: 微信小程序自动化操作技能。当需要通过 wxpilot CLI 操作微信小程序时使用，包括连接开发者工具、页面导航、元素交互（点击/输入/滚动）、读取页面状态、网络代理与 mock。
+---
+
 # wxpilot — AI Agent 使用指南
 
 wxpilot 是面向 AI Agent 的微信小程序自动化 CLI 工具，通过 Unix Domain Socket 与后台 Daemon 通信，Daemon 控制微信开发者工具（需已安装并运行）。
