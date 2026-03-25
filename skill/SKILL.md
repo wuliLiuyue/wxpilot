@@ -1,6 +1,6 @@
 ---
 name: wxpilot
-description: 微信小程序自动化操作技能。当需要通过 wxpilot CLI 操作微信小程序时使用，包括连接开发者工具、页面导航、元素交互（点击/输入/滚动）、读取页面状态、网络代理与 mock。
+description: 微信小程序自动化操作技能。当需要通过 wxpilot CLI 操作微信小程序时使用，包括连接开发者工具、页面导航、元素交互（点击/输入/滚动）、读取页面状态、网络代理与 mock。运行 wxpilot start 前，优先检查当前工作目录下是否存在含 project.config.json 的 dist 子目录，有则可省略路径参数直接运行；多个候选时 CLI 会交互提示选择，避免在对话中询问用户。
 ---
 
 # wxpilot — AI Agent 使用指南
@@ -13,13 +13,20 @@ wxpilot 是面向 AI Agent 的微信小程序自动化 CLI 工具，通过 Unix 
 
 微信开发者工具需已安装并启动。
 
+**项目路径检测（AI Agent 执行前先判断）：**
+1. 用户明确提供了项目路径 → 直接使用
+2. 当前工作目录下存在 `dist/project.config.json` → 省略路径参数，CLI 自动检测
+3. 存在多个候选 `dist` 目录 → CLI 交互提示选择，无需在对话中询问用户
+4. 均无 → 询问用户提供路径
+
 ---
 
 ## 快速开始
 
 ```bash
 # 第一步：启动自动化（daemon 运行 cli auto，等待就绪）
-wxpilot start /path/to/miniprogram
+wxpilot start                                            # 自动检测 dist/project.config.json
+wxpilot start /path/to/miniprogram                      # 明确指定路径
 wxpilot start /path/to/miniprogram --appid wx你的AppID   # appid 为占位符时
 
 # 第二步：连接（可单独重试，无需重新 start）
@@ -53,6 +60,7 @@ wxpilot shot /tmp/screen.png
 
 ### 连接管理
 ```bash
+wxpilot start                                      # 自动检测 dist/project.config.json
 wxpilot start <projectPath>                        # 启动自动化（运行 cli auto，等待就绪）
 wxpilot start <projectPath> --appid wx你的AppID    # appid 为占位符时指定
 wxpilot start <projectPath> --cli-path <path>      # 指定开发者工具 CLI 路径
@@ -185,7 +193,7 @@ wxpilot shot /tmp/result.png
 
 ## 注意事项
 
-1. 微信开发者工具需已安装并启动，`wxpilot start <projectPath>` 会执行 `cli auto` 并等待就绪，之后再执行 `wxpilot connect`
+1. 微信开发者工具需已安装并启动，`wxpilot start [projectPath]` 会执行 `cli auto` 并等待就绪，之后再执行 `wxpilot connect`；省略路径时自动扫描 CWD 下含 `project.config.json` 的 `dist` 目录
 2. Daemon 会在首次 CLI 调用时自动后台启动，30 分钟无操作自动退出
 3. HTTPS 代理需在开发者工具中忽略证书错误，或手动信任 CA 证书（`~/.wxpilot/ca/cert.pem`）
 4. `wxpilot run` 中的 JS 在小程序页面 VM 中执行，不能访问 Node.js API
