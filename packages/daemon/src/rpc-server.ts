@@ -126,6 +126,7 @@ async function handle(req: RpcRequest): Promise<RpcResponse> {
         const port = (params['port'] as number | undefined) ?? 9420
         const wsEndpoint = await runCliAuto(projectPath, port, cliPath, appid)
         pendingWsEndpoint = wsEndpoint
+        auto.setProjectPath(projectPath)
         return ok(id, { ok: true, wsEndpoint, port })
       }
 
