@@ -1,4 +1,4 @@
-import mockttp from 'mockttp'
+import * as mockttp from 'mockttp'
 import type { CompletedRequest } from 'mockttp'
 import type { PassThroughResponse } from 'mockttp/dist/rules/requests/request-handler-definitions'
 import fs from 'fs'
