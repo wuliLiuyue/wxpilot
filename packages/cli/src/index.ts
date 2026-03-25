@@ -1,3 +1,6 @@
+import fs from 'fs'
+import path from 'path'
+import readline from 'readline'
 import { Command } from 'commander'
 import { call } from './client.js'
 import { printOk, printErr, printRefExpired, setJsonMode, setVerboseMode } from './output.js'
@@ -33,18 +36,67 @@ async function run(method: string, params: Record<string, unknown>, opts: { time
   }
 }
 
+// ─── Auto-detect project path ──────────────────────────────────────────────
+
+function findDistCandidates(dir: string, depth: number): string[] {
+  if (depth === 0) return []
+  const results: string[] = []
+  let entries: fs.Dirent[]
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const full = path.join(dir, entry.name)
+    if (entry.name === 'dist') {
+      if (fs.existsSync(path.join(full, 'project.config.json'))) {
+        results.push(full)
+      }
+    } else if (!entry.name.startsWith('.') && entry.name !== 'node_modules') {
+      results.push(...findDistCandidates(full, depth - 1))
+    }
+  }
+  return results
+}
+
+async function detectOrSelectProject(): Promise<string | undefined> {
+  const candidates = findDistCandidates(process.cwd(), 2)
+  if (candidates.length === 0) return undefined
+  if (candidates.length === 1) {
+    console.log(`自动检测到项目: ${candidates[0]}`)
+    return candidates[0]
+  }
+  console.log('找到多个候选项目：')
+  candidates.forEach((p, i) => console.log(`  ${i + 1}. ${p}`))
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+    rl.question('请选择 (输入序号): ', (answer) => {
+      rl.close()
+      const idx = parseInt(answer, 10) - 1
+      resolve(candidates[idx] ?? undefined)
+    })
+  })
+}
+
 // ─── Start ─────────────────────────────────────────────────────────────────
 
 program
-  .command('start <projectPath>')
+  .command('start [projectPath]')
   .description('启动微信开发者工具自动化（运行 cli auto，等待就绪）')
   .option('--cli-path <path>', '开发者工具 CLI 路径（默认自动查找）')
   .option('--appid <id>', 'AppID（project.config.json 中为占位符时必填）')
   .option('--auto-port <port>', '自动化 WebSocket 端口', '9420')
-  .action(async (projectPath: string, opts: { cliPath?: string; appid?: string; autoPort?: string }) => {
+  .action(async (projectPath: string | undefined, opts: { cliPath?: string; appid?: string; autoPort?: string }) => {
+    const resolved = projectPath ?? (await detectOrSelectProject())
+    if (!resolved) {
+      printErr('未找到项目路径，请传入 <projectPath> 或在包含 dist/project.config.json 的目录下运行')
+      process.exit(1)
+    }
     const port = parseInt(opts.autoPort ?? '9420', 10)
     await run('start', {
-      projectPath,
+      projectPath: resolved,
       cliPath: opts.cliPath,
       appid: opts.appid,
       port,
