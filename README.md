@@ -10,16 +10,20 @@ npm install -g wxpilot
 
 ## 前置步骤
 
-微信开发者工具需已安装并启动，项目已在工具中打开。
+微信开发者工具需已安装并启动。
 
 ## 快速开始
 
 ```bash
-# 连接（自动执行 cli auto 并连接）
-wxpilot connect /path/to/miniprogram
+# 第一步：启动自动化（自动检测 dist/project.config.json，或明确指定路径）
+wxpilot start
+wxpilot start /path/to/miniprogram
 
 # appid 为占位符时
-wxpilot connect /path/to/miniprogram --appid wx你的AppID
+wxpilot start /path/to/miniprogram --appid wx你的AppID
+
+# 第二步：连接
+wxpilot connect
 
 # 查看页面，获取可交互元素引用 %N
 wxpilot view --compact
@@ -43,12 +47,15 @@ wxpilot shot /tmp/result.png
 
 ## 命令参考
 
-### 连接
+### 连接管理
 ```bash
-wxpilot connect <projectPath>                     # 自动 cli auto + ws 连接
-wxpilot connect <projectPath> --appid <id>        # appid 为占位符时指定
-wxpilot connect <projectPath> --cli-path <path>   # 指定开发者工具 CLI 路径
-wxpilot connect --ws <wsEndpoint>                 # 直接连接已知 ws 端口
+wxpilot start                                      # 自动检测 dist/project.config.json
+wxpilot start <projectPath>                        # 启动自动化（运行 cli auto，等待就绪）
+wxpilot start <projectPath> --appid <id>           # appid 为占位符时指定
+wxpilot start <projectPath> --cli-path <path>      # 指定开发者工具 CLI 路径
+wxpilot start <projectPath> --auto-port 9421       # 指定自动化端口（默认 9420）
+wxpilot connect                                    # 连接（使用 start 记录的端点）
+wxpilot connect --ws <wsEndpoint>                  # 直接指定 ws 端点（跳过 start）
 wxpilot disconnect
 wxpilot status
 ```
