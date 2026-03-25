@@ -282,13 +282,19 @@ net
   .action(async (opts: { filter?: string }) => {
     const result = await callAndReturn('net.log', { filter: opts.filter })
     if (!result) return
-    const r = result as { logs: Array<{ method: string; url: string; status: number; ts: number; mocked: number }> }
+    const r = result as { logs: Array<{ method: string; url: string; status: number; ts: number; mocked: number; req_body: string | null; res_body: string | null }> }
     if (program.opts()['json']) {
       printOk(result as Record<string, unknown>)
     } else {
       for (const log of r.logs) {
         const mocked = log.mocked ? ' [MOCK]' : ''
         console.log(`${new Date(log.ts).toISOString()} ${log.method} ${log.url} ${log.status ?? '-'}${mocked}`)
+        if (log.req_body) {
+          try { console.log(`  req: ${JSON.stringify(JSON.parse(log.req_body), null, 0)}`) } catch { console.log(`  req: ${log.req_body.slice(0, 200)}`) }
+        }
+        if (log.res_body) {
+          try { console.log(`  res: ${JSON.stringify(JSON.parse(log.res_body), null, 0)}`) } catch { console.log(`  res: ${log.res_body.slice(0, 200)}`) }
+        }
       }
     }
   })

@@ -11,14 +11,18 @@ const automator = require('miniprogram-automator') as {
 }
 
 let miniProgram: MiniProgram | null = null
-let connectedPath: string | null = null
+let connectedProjectPath: string | null = null
 
 export function isConnected(): boolean {
   return miniProgram !== null
 }
 
 export function getConnectedPath(): string | null {
-  return connectedPath
+  return connectedProjectPath
+}
+
+export function setProjectPath(projectPath: string): void {
+  connectedProjectPath = projectPath
 }
 
 export async function connectWs(wsEndpoint: string): Promise<void> {
@@ -26,14 +30,13 @@ export async function connectWs(wsEndpoint: string): Promise<void> {
     await disconnect()
   }
   miniProgram = await automator.connect({ wsEndpoint })
-  connectedPath = wsEndpoint
 }
 
 export async function disconnect(): Promise<void> {
   if (miniProgram) {
     try { miniProgram.disconnect() } catch { /* ignore */ }
     miniProgram = null
-    connectedPath = null
+    connectedProjectPath = null
   }
 }
 
@@ -58,12 +61,12 @@ export async function back(): Promise<void> {
 
 export async function reload(): Promise<void> {
   const page = await getCurrentPage()
-  const path = page.path
+  const pagePath = page.path.startsWith('/') ? page.path : `/${page.path}`
   const query = page.query as Record<string, string>
   const qs = Object.keys(query).length
     ? '?' + Object.entries(query).map(([k, v]) => `${k}=${v}`).join('&')
     : ''
-  await getMp().reLaunch(path + qs)
+  await getMp().reLaunch(pagePath + qs)
 }
 
 export async function screenshot(savePath?: string): Promise<{ path: string; base64?: string }> {
@@ -79,7 +82,8 @@ export async function screenshot(savePath?: string): Promise<{ path: string; bas
 }
 
 export async function runScript(js: string): Promise<unknown> {
-  return getMp().evaluate(js)
+  const fnDecl = js.trimStart().startsWith('function') ? js : `function() { return (${js}); }`
+  return getMp().evaluate(fnDecl)
 }
 
 export async function getWxml(): Promise<string> {
