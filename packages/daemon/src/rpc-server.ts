@@ -302,7 +302,11 @@ async function handle(req: RpcRequest): Promise<RpcResponse> {
 
       case 'net.log': {
         const filter = params['filter'] as string | undefined
-        const logs = proxy.getNetLogs(filter)
+        const logs = proxy.getNetLogs(filter).map((log) => ({
+          ...log,
+          req_body: log.req_body ? log.req_body.toString('utf8') : null,
+          res_body: log.res_body ? log.res_body.toString('utf8') : null,
+        }))
         return ok(id, { ok: true, logs })
       }
 
