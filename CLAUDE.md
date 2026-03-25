@@ -50,6 +50,11 @@ wxpilot --help
 
 # 或直接运行构建产物
 node packages/cli/dist/index.js --help
+
+# 典型使用流程
+wxpilot start              # 自动检测 CWD 下 dist/project.config.json
+wxpilot start /path/to/mp  # 明确指定路径
+wxpilot connect            # 连接（使用 start 记录的端点）
 ```
 
 ## 架构设计
@@ -84,6 +89,14 @@ node packages/cli/dist/index.js --help
 - `src/snapshot/` - WXML 解析、元素树、Ref 分配
 - `src/proxy/` - HTTP/HTTPS 代理（mockttp）
 - `src/store/` - SQLite 请求日志存储
+
+### 项目路径自动检测
+
+`wxpilot start` 的 `projectPath` 参数为可选：
+- 省略时扫描 CWD 下最多 2 层子目录，收集含 `project.config.json` 的 `dist` 目录
+- 唯一候选：自动使用并打印路径
+- 多个候选：打印列表并通过 readline 交互让用户选择
+- 无候选：报错提示手动传入
 
 ### Ref 机制（核心概念）
 
