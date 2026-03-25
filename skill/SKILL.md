@@ -9,40 +9,26 @@ wxpilot 是面向 AI Agent 的微信小程序自动化 CLI 工具，通过 Unix 
 
 ---
 
-## 前置步骤：开启开发者工具自动化
+## 前置步骤
 
-wxpilot 通过 WebSocket 连接微信开发者工具的自动化端口。每次启动开发者工具后，需先用工具自带的 CLI 开启自动化：
-
-```bash
-# Mac - 标准版
-/Applications/wechatwebdevtools.app/Contents/MacOS/cli auto \
-  --project /path/to/miniprogram --port 9420
-
-# Mac - Stable 版
-"/Applications/Wechat Devtools Stable.app/Contents/MacOS/cli" auto \
-  --project /path/to/miniprogram --port 9420
-
-# 若 project.config.json 中 appid 是占位符，需加 --appid
-"/Applications/Wechat Devtools Stable.app/Contents/MacOS/cli" auto \
-  --project /path/to/miniprogram --appid wx你的AppID --port 9420
-```
-
-看到 `✔ auto 自动化已开启` 后，再执行 wxpilot connect。
+微信开发者工具需已安装并启动。
 
 ---
 
 ## 快速开始
 
 ```bash
-# 第一步：在开发者工具中开启自动化（见上方前置步骤）
+# 第一步：启动自动化（daemon 运行 cli auto，等待就绪）
+wxpilot start /path/to/miniprogram
+wxpilot start /path/to/miniprogram --appid wx你的AppID   # appid 为占位符时
 
-# 第二步：连接
+# 第二步：连接（可单独重试，无需重新 start）
 wxpilot connect
 
-# 第三步：查看当前页面，获取 %N 引用
+# 查看当前页面，获取 %N 引用
 wxpilot view
 
-# 第四步：交互
+# 交互
 wxpilot tap %1
 wxpilot type %2 "13800138000"
 
@@ -67,10 +53,14 @@ wxpilot shot /tmp/screen.png
 
 ### 连接管理
 ```bash
-wxpilot connect                        # 连接（默认 ws://localhost:9420）
-wxpilot connect --ws ws://localhost:9420  # 指定端口
-wxpilot disconnect                     # 断开连接
-wxpilot status                         # 查看连接状态及代理状态
+wxpilot start <projectPath>                        # 启动自动化（运行 cli auto，等待就绪）
+wxpilot start <projectPath> --appid wx你的AppID    # appid 为占位符时指定
+wxpilot start <projectPath> --cli-path <path>      # 指定开发者工具 CLI 路径
+wxpilot start <projectPath> --auto-port 9421       # 指定自动化端口（默认 9420）
+wxpilot connect                                    # 连接（使用 start 记录的端点）
+wxpilot connect --ws ws://127.0.0.1:9420           # 直接指定 ws 端点（跳过 start）
+wxpilot disconnect                                 # 断开连接
+wxpilot status                                     # 查看连接状态及代理状态
 ```
 
 ### 导航
@@ -165,7 +155,9 @@ wxpilot daemon restart           # 重启 daemon
 ## 典型 Agent 工作流
 
 ```bash
-# 1. 连接（开发者工具已通过 cli auto 开启自动化）
+# 1. 启动自动化（等待开发者工具就绪）
+wxpilot start /path/to/project
+# 2. 连接
 wxpilot connect
 
 # 2. 跳转到目标页面
@@ -193,7 +185,7 @@ wxpilot shot /tmp/result.png
 
 ## 注意事项
 
-1. 微信开发者工具需已启动并通过 `cli auto` 开启自动化端口（默认 9420），wxpilot 不负责构建/启动
+1. 微信开发者工具需已安装并启动，`wxpilot start <projectPath>` 会执行 `cli auto` 并等待就绪，之后再执行 `wxpilot connect`
 2. Daemon 会在首次 CLI 调用时自动后台启动，30 分钟无操作自动退出
 3. HTTPS 代理需在开发者工具中忽略证书错误，或手动信任 CA 证书（`~/.wxpilot/ca/cert.pem`）
 4. `wxpilot run` 中的 JS 在小程序页面 VM 中执行，不能访问 Node.js API
