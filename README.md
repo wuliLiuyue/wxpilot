@@ -8,31 +8,18 @@
 npm install -g wxpilot
 ```
 
-## 前置步骤：开启开发者工具自动化
+## 前置步骤
 
-每次启动微信开发者工具后，需先用工具自带 CLI 开启自动化端口：
-
-```bash
-# Mac - 标准版
-/Applications/wechatwebdevtools.app/Contents/MacOS/cli auto \
-  --project /path/to/miniprogram --port 9420
-
-# Mac - Stable 版
-"/Applications/Wechat Devtools Stable.app/Contents/MacOS/cli" auto \
-  --project /path/to/miniprogram --port 9420
-
-# 若 appid 是占位符，加 --appid
-"/Applications/Wechat Devtools Stable.app/Contents/MacOS/cli" auto \
-  --project /path/to/miniprogram --appid wx你的AppID --port 9420
-```
-
-看到 `✔ auto 自动化已开启` 后，再运行 wxpilot。
+微信开发者工具需已安装并启动，项目已在工具中打开。
 
 ## 快速开始
 
 ```bash
-# 连接（默认 ws://localhost:9420）
-wxpilot connect
+# 连接（自动执行 cli auto 并连接）
+wxpilot connect /path/to/miniprogram
+
+# appid 为占位符时
+wxpilot connect /path/to/miniprogram --appid wx你的AppID
 
 # 查看页面，获取可交互元素引用 %N
 wxpilot view --compact
@@ -58,7 +45,10 @@ wxpilot shot /tmp/result.png
 
 ### 连接
 ```bash
-wxpilot connect [--ws <addr>]    # 连接，默认 ws://localhost:9420
+wxpilot connect <projectPath>                     # 自动 cli auto + ws 连接
+wxpilot connect <projectPath> --appid <id>        # appid 为占位符时指定
+wxpilot connect <projectPath> --cli-path <path>   # 指定开发者工具 CLI 路径
+wxpilot connect --ws <wsEndpoint>                 # 直接连接已知 ws 端口
 wxpilot disconnect
 wxpilot status
 ```
