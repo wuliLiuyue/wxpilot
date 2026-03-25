@@ -1,5 +1,4 @@
 import fs from 'fs'
-import path from 'path'
 import { PID_FILE, SOCK_FILE, WXPILOT_DIR } from './constants.js'
 import { startServer } from './rpc-server.js'
 import { closeDb } from './store/index.js'

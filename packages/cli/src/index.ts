@@ -33,25 +33,39 @@ async function run(method: string, params: Record<string, unknown>, opts: { time
   }
 }
 
+// ─── Start ─────────────────────────────────────────────────────────────────
+
+program
+  .command('start <projectPath>')
+  .description('启动微信开发者工具自动化（运行 cli auto，等待就绪）')
+  .option('--cli-path <path>', '开发者工具 CLI 路径（默认自动查找）')
+  .option('--appid <id>', 'AppID（project.config.json 中为占位符时必填）')
+  .option('--auto-port <port>', '自动化 WebSocket 端口', '9420')
+  .action(async (projectPath: string, opts: { cliPath?: string; appid?: string; autoPort?: string }) => {
+    const port = parseInt(opts.autoPort ?? '9420', 10)
+    await run('start', {
+      projectPath,
+      cliPath: opts.cliPath,
+      appid: opts.appid,
+      port,
+    }, { timeout: '35000' })
+  })
+
 // ─── Connect ───────────────────────────────────────────────────────────────
 
 program
   .command('connect')
-  .description('连接微信开发者工具（需先通过 cli auto 开启自动化）')
-  .option('--ws <wsEndpoint>', 'WebSocket 地址', 'ws://localhost:9420')
-  .action(async (opts: { ws: string }) => {
-    const timeout = parseInt(program.opts()['timeout'] ?? '10000', 10)
+  .description('连接微信开发者工具（使用 start 记录的端点，或 --ws 指定）')
+  .option('--ws <wsEndpoint>', '直接指定 WebSocket 地址')
+  .action(async (opts: { ws?: string }) => {
+    // connect 含 5 次重试 × 2s，给足 10s+
+    const connectTimeout = 30000
     try {
-      const result = await call('connect', { wsEndpoint: opts.ws }, timeout)
+      const result = await call('connect', opts.ws ? { wsEndpoint: opts.ws } : {}, connectTimeout)
       printOk(result as Record<string, unknown>)
     } catch (e: unknown) {
       const err = e as Error & { code?: number }
       printErr(err.message)
-      if (!program.opts()['json']) {
-        console.error('\n请先在微信开发者工具中执行：')
-        console.error(`  cli auto --project <projectPath> --port 9420`)
-        console.error('\n然后重新运行 wxpilot connect')
-      }
       process.exit(1)
     }
   })

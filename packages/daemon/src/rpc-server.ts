@@ -1,6 +1,8 @@
 import net from 'net'
+
 import fs from 'fs'
 import path from 'path'
+import { spawn } from 'child_process'
 import { SOCK_FILE, IDLE_TIMEOUT_MS } from './constants.js'
 import * as auto from './automator/index.js'
 import { parseWxml, assignRefs, renderTree } from './snapshot/parser.js'
@@ -8,6 +10,7 @@ import { RefStore } from './snapshot/ref-store.js'
 import * as proxy from './proxy/index.js'
 
 const refStore = new RefStore()
+let pendingWsEndpoint: string | null = null
 let server: net.Server | null = null
 let activeConnections = 0
 let lastActivityTs = Date.now()
@@ -58,17 +61,88 @@ function resolveRef(ref: number): string {
   return sel
 }
 
+const CLI_CANDIDATES = [
+  '/Applications/wechatwebdevtools.app/Contents/MacOS/cli',
+  '/Applications/Wechat Devtools Stable.app/Contents/MacOS/cli',
+]
+
+function findDevToolsCli(cliPath?: string): string {
+  if (cliPath) return cliPath
+  for (const p of CLI_CANDIDATES) {
+    if (fs.existsSync(p)) return p
+  }
+  throw new Error('未找到微信开发者工具 CLI，请用 --cli-path 指定路径')
+}
+
+function runCliAuto(projectPath: string, port: number, cliPath?: string, appid?: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const cli = findDevToolsCli(cliPath)
+    const args = ['auto', '--project', projectPath, '--auto-port', String(port)]
+    if (appid) args.push('--appid', appid)
+
+    const child = spawn(cli, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    let output = ''
+    let resolved = false
+
+    const timer = setTimeout(() => {
+      child.kill()
+      reject(new Error('cli auto 超时（30s），请确认开发者工具已启动并打开目标项目'))
+    }, 30000)
+
+    const onData = (data: Buffer) => {
+      output += data.toString()
+      if (!resolved && (output.includes('✔ auto') || output.includes('自动化已开启') || output.includes('auto success'))) {
+        resolved = true
+        clearTimeout(timer)
+        resolve(`ws://127.0.0.1:${port}`)
+      }
+    }
+
+    child.stdout.on('data', onData)
+    child.stderr.on('data', onData)
+    child.on('error', (e) => { clearTimeout(timer); reject(e) })
+    child.on('exit', (code) => {
+      if (resolved) return
+      clearTimeout(timer)
+      if (code === 0) {
+        resolve(`ws://127.0.0.1:${port}`)
+      } else if (code !== null) {
+        reject(new Error(`cli auto 退出码 ${code}，请检查 projectPath 或 appid`))
+      }
+    })
+  })
+}
+
 async function handle(req: RpcRequest): Promise<RpcResponse> {
   const { id, method, params = {} } = req
   touch()
 
   try {
     switch (method) {
+      case 'start': {
+        const projectPath = params['projectPath'] as string
+        const cliPath = params['cliPath'] as string | undefined
+        const appid = params['appid'] as string | undefined
+        const port = (params['port'] as number | undefined) ?? 9420
+        const wsEndpoint = await runCliAuto(projectPath, port, cliPath, appid)
+        pendingWsEndpoint = wsEndpoint
+        return ok(id, { ok: true, wsEndpoint, port })
+      }
+
       case 'connect': {
-        const wsEndpoint = (params['wsEndpoint'] as string | undefined) ?? 'ws://localhost:9420'
-        await auto.connectWs(wsEndpoint)
-        refStore.invalidateAll()
-        return ok(id, { ok: true, wsEndpoint })
+        const wsEndpoint = (params['wsEndpoint'] as string | undefined) ?? pendingWsEndpoint ?? 'ws://127.0.0.1:9420'
+        let lastErr: Error | undefined
+        for (let i = 0; i < 5; i++) {
+          if (i > 0) await sleep(2000)
+          try {
+            await auto.connectWs(wsEndpoint)
+            refStore.invalidateAll()
+            return ok(id, { ok: true, wsEndpoint })
+          } catch (e) {
+            lastErr = e as Error
+          }
+        }
+        return err(id, ERR.INTERNAL, lastErr?.message ?? 'connect failed')
       }
 
       case 'disconnect': {
