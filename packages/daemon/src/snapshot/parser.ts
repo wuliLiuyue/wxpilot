@@ -20,12 +20,19 @@ const INTERACTIVE_TAGS = new Set([
 const INTERACTIVE_ATTRS = new Set([
   'bindtap', 'catchtap', 'bind:tap', 'catch:tap',
   'bindchange', 'bind:change',
+  'bindinput', 'bind:input',
+  'bindsubmit', 'bind:submit',
+  'bindlongpress', 'bind:longpress',
 ])
 
 function isInteractive(el: Element): boolean {
   if (INTERACTIVE_TAGS.has(el.name)) return true
   for (const attr of INTERACTIVE_ATTRS) {
     if (el.attribs[attr] != null) return true
+  }
+  // elements with data-* attributes are typically interactive (event data params in WeChat)
+  for (const attr of Object.keys(el.attribs)) {
+    if (attr.startsWith('data-')) return true
   }
   return false
 }
@@ -38,12 +45,12 @@ function getTextContent(node: Node): string {
   return ''
 }
 
-function buildSelector(el: Element, parentSelector: string, index: number): string {
+function buildSelector(el: Element, parentSelector: string, _index: number): string {
   const id = el.attribs['id']
   if (id) return `#${id}`
   const cls = el.attribs['class']?.split(' ').filter(Boolean)[0]
   const base = cls ? `${el.name}.${cls}` : el.name
-  return `${parentSelector} > ${base}:nth-child(${index + 1})`
+  return parentSelector ? `${parentSelector} > ${base}` : base
 }
 
 function parseNode(
@@ -86,7 +93,10 @@ export function parseWxml(wxml: string, maxDepth = 20): ElementNode[] {
   const roots: ElementNode[] = []
   let idx = 0
   for (const node of doc.children) {
-    const parsed = parseNode(node, 'page', idx, 0, maxDepth)
+    // outerWxml() includes the <page> root tag itself; pass empty parentSelector
+    // so buildSelector produces 'page' (not 'page > page')
+    const isPageRoot = node instanceof Element && node.name === 'page'
+    const parsed = parseNode(node, isPageRoot ? '' : 'page', idx, 0, maxDepth)
     if (parsed) { roots.push(parsed); idx++ }
   }
   return roots

@@ -31,12 +31,12 @@ export function printOk(data: Record<string, unknown>): void {
     console.log(`OK: read %${data['ref']} "${data['text']}"`)
     return
   }
-  if (data['path'] !== undefined && data['action'] === undefined) {
-    console.log(`OK: screenshot saved → ${data['path']}`)
+  if (data['base64']) {
+    console.log(`OK: screenshot captured (base64)\n${data['base64']}`)
     return
   }
-  if (data['base64']) {
-    console.log('OK: screenshot captured (base64)')
+  if (data['path'] !== undefined && data['action'] === undefined) {
+    console.log(`OK: screenshot saved → ${data['path']}`)
     return
   }
   if (data['result'] !== undefined) {
