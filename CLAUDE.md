@@ -87,7 +87,7 @@ wxpilot connect            # 连接（使用 start 记录的端点）
 - `src/rpc-server.ts` - JSON-RPC 服务器（方法路由、错误处理）
 - `src/automator/` - 微信开发者工具 WebSocket 连接
 - `src/snapshot/` - WXML 解析、元素树、Ref 分配
-- `src/proxy/` - HTTP/HTTPS 代理（mockttp）
+- `src/proxy/` - HTTP/HTTPS 代理（mockttp，支持 MITM 解密 HTTPS 流量）
 - `src/store/` - SQLite 请求日志存储
 
 ### 项目路径自动检测
@@ -113,6 +113,7 @@ wxpilot connect            # 连接（使用 start 记录的端点）
 2. **better-sqlite3 预构建**：pnpm 仅构建特定依赖（见 `onlyBuiltDependencies`）
 3. **Unix Domain Socket**：CLI 与 Daemon 通信依赖 `~/.wxpilot/daemon.sock`
 4. **Daemon 生命周期**：首次 CLI 调用时启动，30 分钟空闲后自动退出
+5. **HTTPS 代理**：首次使用 `--https` 模式需运行 `wxpilot net install-ca` 安装 CA 证书并重启开发者工具
 
 ## 测试
 
