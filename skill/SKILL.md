@@ -104,12 +104,13 @@ wxpilot shot [path]              # 截图，不传路径则输出 base64
 ### 网络代理
 ```bash
 # 用户需在微信开发者工具手动设置代理：设置 → 代理设置 → 手动 → 127.0.0.1:8899
-wxpilot net start [--port 8899] [--https]   # 启动代理
+wxpilot net start [--port 8899] [--https]   # 启动代理（HTTPS 模式可解密 HTTPS 流量）
 wxpilot net stop                             # 停止代理
 wxpilot net log [--filter <url>]             # 查看请求日志
 wxpilot net mock <url> <jsonFile>            # 添加 mock（jsonFile 包含响应 JSON）
 wxpilot net unmock <url>                     # 移除 mock
 wxpilot net clear                            # 清空日志
+wxpilot net install-ca                       # 安装 CA 证书到系统钥匙串（HTTPS 模式首次使用）
 ```
 
 **mock 文件格式（jsonFile）：**
@@ -191,9 +192,52 @@ wxpilot shot /tmp/result.png
 
 ---
 
+## 代理抓包工作流
+
+### HTTP 模式（仅抓 HTTP，HTTPS 透明放行不记录）
+
+```bash
+wxpilot net start               # 启动代理（HTTP 模式，无需证书）
+# → 开发者工具：设置 → 代理 → 手动设置代理 → 127.0.0.1:8899
+wxpilot start <projectPath>     # ⚠️ 代理启动后再执行 start（开发者工具内部请求也走代理）
+wxpilot connect
+wxpilot net clear
+wxpilot goto /pages/xxx/index
+sleep 3                          # 等待页面接口请求完成
+wxpilot net log --filter api.example.com
+```
+
+### HTTPS MITM 模式（解密 HTTPS 流量，首次需安装证书）
+
+```bash
+# ── 首次配置（仅需一次）──
+wxpilot net start --https       # 生成 CA 证书并启动 MITM 代理
+wxpilot net install-ca          # 一键安装 CA 证书到系统钥匙串
+# → 完全退出并重启微信开发者工具（必须重启，进程级证书缓存）
+# → 开发者工具：设置 → 代理 → 手动设置代理 → 127.0.0.1:8899
+
+# ── 每次抓包 ──
+wxpilot net start --https       # 先启动代理（代理必须先于 start 命令运行）
+wxpilot start <projectPath>
+wxpilot connect
+wxpilot net clear
+wxpilot goto /pages/xxx/index
+sleep 3
+wxpilot net log --filter api.example.com
+```
+
+### 关键注意事项
+
+- 开发者工具设置代理后，**工具自身的内部请求也走代理**；必须保证代理在运行，否则 `wxpilot start` 会报 `cli auto 失败 Failed to fetch`
+- 若忘记启动代理就执行了 `wxpilot start`，daemon 会自动检测并启动 HTTP 模式代理后重试
+- `net install-ca` 安装后必须**完全重启**开发者工具才生效
+- HTTP 模式下 HTTPS 请求透明隧道放行（不记录）；要记录 HTTPS 流量必须用 `--https` 模式
+
+---
+
 ## 注意事项
 
 1. 微信开发者工具需已安装并启动，`wxpilot start [projectPath]` 会执行 `cli auto` 并等待就绪，之后再执行 `wxpilot connect`；省略路径时自动扫描 CWD 下含 `project.config.json` 的 `dist` 目录
 2. Daemon 会在首次 CLI 调用时自动后台启动，30 分钟无操作自动退出
-3. HTTPS 代理需在开发者工具中忽略证书错误，或手动信任 CA 证书（`~/.wxpilot/ca/cert.pem`）
+3. HTTPS 代理首次使用需运行 `wxpilot net install-ca` 安装 CA 证书并重启开发者工具
 4. `wxpilot run` 中的 JS 在小程序页面 VM 中执行，不能访问 Node.js API
