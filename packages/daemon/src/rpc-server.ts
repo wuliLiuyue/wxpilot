@@ -2,13 +2,16 @@ import net from 'net'
 
 import fs from 'fs'
 import path from 'path'
-import { spawn } from 'child_process'
+import { spawn, exec } from 'child_process'
+import { promisify } from 'util'
 import { SOCK_FILE, IDLE_TIMEOUT_MS } from './constants.js'
 import * as auto from './automator/index.js'
 import { parseWxml, assignRefs, renderTree } from './snapshot/parser.js'
 import { RefStore } from './snapshot/ref-store.js'
 import * as proxy from './proxy/index.js'
+import { CA_DIR } from './constants.js'
 
+const execAsync = promisify(exec)
 const refStore = new RefStore()
 let pendingWsEndpoint: string | null = null
 let server: net.Server | null = null
@@ -104,10 +107,13 @@ function runCliAuto(projectPath: string, port: number, cliPath?: string, appid?:
     child.on('exit', (code) => {
       if (resolved) return
       clearTimeout(timer)
-      if (code === 0) {
+      const success = output.includes('✔ auto') || output.includes('自动化已开启') || output.includes('auto success')
+      if ((code === 0 || code === null) && success) {
         resolve(`ws://127.0.0.1:${port}`)
-      } else if (code !== null) {
-        reject(new Error(`cli auto 退出码 ${code}，请检查 projectPath 或 appid`))
+      } else {
+        const isProxyError = output.includes('8899') || output.includes('tunneling socket') || output.includes('TLS connection') || output.includes('ECONNRESET') || output.includes('Failed to fetch')
+        const msg = (output.match(/\[error\]\s*({[\s\S]*?}|\S+.*)/)?.[1] ?? output.trim()) || `cli auto 退出码 ${code}`
+        reject(Object.assign(new Error(`cli auto 失败：${msg}`), { isProxyError }))
       }
     })
   })
@@ -124,7 +130,18 @@ async function handle(req: RpcRequest): Promise<RpcResponse> {
         const cliPath = params['cliPath'] as string | undefined
         const appid = params['appid'] as string | undefined
         const port = (params['port'] as number | undefined) ?? 9420
-        const wsEndpoint = await runCliAuto(projectPath, port, cliPath, appid)
+        let wsEndpoint: string
+        try {
+          wsEndpoint = await runCliAuto(projectPath, port, cliPath, appid)
+        } catch (e: unknown) {
+          const error = e as Error & { isProxyError?: boolean }
+          if (error.isProxyError && !proxy.isRunning()) {
+            await proxy.startProxy(8899, false)
+            wsEndpoint = await runCliAuto(projectPath, port, cliPath, appid)
+          } else {
+            throw e
+          }
+        }
         pendingWsEndpoint = wsEndpoint
         auto.setProjectPath(projectPath)
         return ok(id, { ok: true, wsEndpoint, port })
@@ -326,6 +343,16 @@ async function handle(req: RpcRequest): Promise<RpcResponse> {
       case 'net.clear': {
         proxy.clearNetLogs()
         return ok(id, { ok: true })
+      }
+
+      case 'net.install-ca': {
+        const certFile = path.join(CA_DIR, 'cert.pem')
+        if (!fs.existsSync(certFile)) {
+          return err(id, ERR.NOT_FOUND, 'CA 证书不存在，请先运行 net start --https 生成证书')
+        }
+        const keychain = `${process.env['HOME']}/Library/Keychains/login.keychain-db`
+        await execAsync(`security add-trusted-cert -d -r trustRoot -k "${keychain}" "${certFile}"`)
+        return ok(id, { ok: true, certFile })
       }
 
       case 'daemon.stop': {
