@@ -254,7 +254,7 @@ net
     const result = await callAndReturn('net.start', {
       port: parseInt(opts.port ?? '8899', 10),
       https: opts.https ?? false,
-    })
+    }, 30000)
     if (!result) return
     const r = result as Record<string, unknown>
     if (program.opts()['json']) {
@@ -272,7 +272,7 @@ net
   .command('stop')
   .description('停止代理')
   .action(async () => {
-    await run('net.stop', {})
+    await run('net.stop', {}, { timeout: '15000' })
   })
 
 net
@@ -320,6 +320,22 @@ net
     await run('net.clear', {})
   })
 
+net
+  .command('install-ca')
+  .description('将 HTTPS MITM CA 证书安装到系统钥匙串（需先运行 net start --https）')
+  .action(async () => {
+    const result = await callAndReturn('net.install-ca', {})
+    if (!result) return
+    const r = result as Record<string, unknown>
+    if (program.opts()['json']) {
+      printOk(r)
+    } else {
+      console.log(`OK: CA 证书已安装到系统钥匙串`)
+      console.log(`cert: ${r['certFile']}`)
+      console.log(`请完全重启微信开发者工具后生效`)
+    }
+  })
+
 // ─── Daemon ────────────────────────────────────────────────────────────────
 
 const daemon = program.command('daemon').description('Daemon 管理')
@@ -362,8 +378,8 @@ program
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-async function callAndReturn(method: string, params: Record<string, unknown>): Promise<unknown | null> {
-  const timeout = parseInt(program.opts()['timeout'] ?? '10000', 10)
+async function callAndReturn(method: string, params: Record<string, unknown>, timeoutMs?: number): Promise<unknown | null> {
+  const timeout = timeoutMs ?? parseInt(program.opts()['timeout'] ?? '10000', 10)
   try {
     return await call(method, params, timeout)
   } catch (e: unknown) {
