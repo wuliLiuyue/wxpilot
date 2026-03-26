@@ -90,13 +90,14 @@ wxpilot shot [path]
 
 ### 网络代理
 ```bash
-# 需在开发者工具手动设置代理：设置 → 代理 → 手动 → 127.0.0.1:8899
-wxpilot net start [--port 8899] [--https]
+# 需在开发者工具手动设置代理：设置 → 代理设置 → 手动 → 127.0.0.1:8899
+wxpilot net start [--port 8899] [--https]   # --https 模式可解密 HTTPS 流量
 wxpilot net stop
 wxpilot net log [--filter <url>]
 wxpilot net mock <url> <jsonFile>
 wxpilot net unmock <url>
 wxpilot net clear
+wxpilot net install-ca                      # 安装 CA 证书到系统钥匙串（HTTPS 模式首次使用）
 ```
 
 ### 执行
@@ -125,4 +126,11 @@ wxpilot daemon restart
 - **Daemon**：PID 锁保证单实例，JSON-RPC over Unix Domain Socket，30 分钟无操作自动退出
 - **automator**：miniprogram-automator WebSocket 连接
 - **snapshot**：WXML 解析 → 元素树 → %N 引用分配
-- **proxy**：mockttp HTTP/HTTPS 代理，请求日志存 SQLite，支持 mock 规则
+- **proxy**：mockttp HTTP/HTTPS 代理（支持 MITM 解密 HTTPS），请求日志存 SQLite，支持 mock 规则
+
+## 代理使用注意事项
+
+1. 开发者工具设置代理后，**工具自身的内部请求也走代理**；必须保证代理在运行，否则 `wxpilot start` 会报 `cli auto 失败 Failed to fetch`
+2. 若忘记启动代理就执行了 `wxpilot start`，daemon 会自动检测并启动 HTTP 模式代理后重试
+3. `net install-ca` 安装后必须**完全重启**开发者工具才生效
+4. HTTP 模式下 HTTPS 请求透明隧道放行（不记录）；要记录 HTTPS 流量必须用 `--https` 模式
