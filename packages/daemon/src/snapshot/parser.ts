@@ -25,14 +25,20 @@ const INTERACTIVE_ATTRS = new Set([
   'bindlongpress', 'bind:longpress',
 ])
 
+// 框架内部 data-* 属性，不作为交互信号（如 Taro 的 data-sid、Vue 的 data-v-*）
+const FRAMEWORK_DATA_ATTR_RE = /^data-(sid$|v-|__)/
+
 function isInteractive(el: Element, eventFingerprints?: Set<string>): boolean {
   if (INTERACTIVE_TAGS.has(el.name)) return true
   for (const attr of INTERACTIVE_ATTRS) {
     if (el.attribs[attr] != null) return true
   }
+  // Taro/NutUI: onClick 编译时附带 hover timing 属性，非交互节点不会显式声明
+  if (el.attribs['hover-start-time'] != null || el.attribs['hover-stay-time'] != null) return true
   // data-* 作为代理信号：outerWxml 快照保留 data-* 属性，但会剥离 bindtap 等事件绑定
+  // 排除框架内部属性（data-sid / data-v-* 等）避免误判
   for (const attr of Object.keys(el.attribs)) {
-    if (attr.startsWith('data-')) return true
+    if (attr.startsWith('data-') && !FRAMEWORK_DATA_ATTR_RE.test(attr)) return true
   }
   // 源文件补全：通过 tag+class 指纹匹配补充漏判的 bindtap 节点（无 data-* 但有 bindtap）
   if (eventFingerprints && el.attribs['class']) {
@@ -171,8 +177,6 @@ function _renderNodes(
 
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i]
-    if (node.interactive) counter.total++
-
     const last = i === nodes.length - 1
     const connector = last ? '└─' : '├─'
     const childPrefix = prefix + (last ? '   ' : '│  ')
