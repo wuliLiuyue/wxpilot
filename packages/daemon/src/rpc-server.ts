@@ -6,7 +6,7 @@ import { spawn, exec } from 'child_process'
 import { promisify } from 'util'
 import { SOCK_FILE, IDLE_TIMEOUT_MS } from './constants.js'
 import * as auto from './automator/index.js'
-import { parseWxml, assignRefs, renderTree } from './snapshot/parser.js'
+import { parseWxml, assignRefs, renderTree, extractEventFingerprints } from './snapshot/parser.js'
 import { RefStore } from './snapshot/ref-store.js'
 import * as proxy from './proxy/index.js'
 import { CA_DIR } from './constants.js'
@@ -198,16 +198,36 @@ async function handle(req: RpcRequest): Promise<RpcResponse> {
       }
 
       case 'view': {
-        const compact = params['compact'] as boolean | undefined
-        const depth = params['depth'] as number | undefined
+        const full = params['full'] as boolean | undefined
+        const compact = full ? false : (params['compact'] as boolean | undefined) ?? true
+        const depth = (params['depth'] as number | undefined) ?? (full ? 20 : 5)
+        const limit = full ? undefined : (params['limit'] as number | undefined) ?? 50
+        const textLimit = full ? 40 : 30
         const wxml = await auto.getWxml()
         const pagePath = await auto.getPagePath()
-        const tree = parseWxml(wxml, depth ?? 20)
+
+        // 读取源 WXML 文件，补全 outerWxml 快照中被剥离的 bindtap 等事件属性
+        let eventFingerprints: Set<string> | undefined
+        const projectPath = auto.getConnectedPath()
+        if (projectPath) {
+          const sourcePath = path.join(projectPath, pagePath + '.wxml')
+          if (fs.existsSync(sourcePath)) {
+            eventFingerprints = extractEventFingerprints(fs.readFileSync(sourcePath, 'utf8'))
+          }
+        }
+
+        const tree = parseWxml(wxml, depth, eventFingerprints)
         const refs = assignRefs(tree)
         refStore.assign(refs)
-        const rendered = renderTree(tree, { compact, depth })
-        const header = `页面: ${pagePath}\n${'─'.repeat(34)}`
-        return ok(id, { ok: true, pagePath, output: `${header}\n${rendered}` })
+        const { output: rendered, shownCount, totalCount } = renderTree(tree, { compact, depth, limit, textLimit })
+        const truncated = limit != null && totalCount > shownCount
+        const header = `页面: ${pagePath}${truncated ? ` [显示 ${shownCount}/${totalCount} 个交互节点]` : ''}\n${'─'.repeat(34)}`
+        return ok(id, {
+          ok: true,
+          pagePath,
+          output: `${header}\n${rendered}`,
+          ...(truncated ? { truncated: true, shownCount, totalCount } : {}),
+        })
       }
 
       case 'tap': {
@@ -281,14 +301,29 @@ async function handle(req: RpcRequest): Promise<RpcResponse> {
 
       case 'state': {
         const dataPath = params['path'] as string | undefined
+        const full = params['full'] as boolean | undefined
         const data = await auto.getPageData(dataPath)
+        if (!dataPath && !full && data != null && typeof data === 'object' && !Array.isArray(data)) {
+          const summary: Record<string, string> = {}
+          for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+            const json = JSON.stringify(v)
+            summary[k] = `${typeof v}(${json.length})`
+          }
+          return ok(id, { ok: true, summary, hint: 'use --full or specify a path to get full data' })
+        }
+        const maxChars = full ? undefined : 4000
+        const dataStr = JSON.stringify(data)
+        if (maxChars && dataStr.length > maxChars) {
+          return ok(id, { ok: true, data: JSON.parse(dataStr.slice(0, maxChars)), truncated: true, originalLength: dataStr.length })
+        }
         return ok(id, { ok: true, data })
       }
 
       case 'shot': {
         const savePath = params['path'] as string | undefined
+        const withBase64 = params['base64'] as boolean | undefined
         const result = await auto.screenshot(savePath)
-        return ok(id, { ok: true, path: result.path, base64: result.base64 })
+        return ok(id, { ok: true, path: result.path, ...(withBase64 ? { base64: result.base64 } : {}) })
       }
 
       case 'run': {
@@ -319,12 +354,35 @@ async function handle(req: RpcRequest): Promise<RpcResponse> {
 
       case 'net.log': {
         const filter = params['filter'] as string | undefined
-        const logs = proxy.getNetLogs(filter).map((log) => ({
-          ...log,
-          req_body: log.req_body ? log.req_body.toString('utf8') : null,
-          res_body: log.res_body ? log.res_body.toString('utf8') : null,
-        }))
-        return ok(id, { ok: true, logs })
+        const withBody = params['withBody'] as boolean | undefined
+        const limitCount = (params['limit'] as number | undefined) ?? 20
+        const bodyMaxChars = 2000
+        const allLogs = proxy.getNetLogs(filter)
+        const sliced = allLogs.slice(0, limitCount)
+        const logs = sliced.map((log) => {
+          const base = {
+            id: log.id,
+            ts: log.ts,
+            method: log.method,
+            url: log.url,
+            status: log.status,
+            mocked: log.mocked,
+            duration: log.duration,
+          }
+          if (!withBody) return base
+          const reqBody = log.req_body ? log.req_body.toString('utf8') : null
+          const resBody = log.res_body ? log.res_body.toString('utf8') : null
+          return {
+            ...base,
+            req_body: reqBody && reqBody.length > bodyMaxChars ? reqBody.slice(0, bodyMaxChars) + '…' : reqBody,
+            res_body: resBody && resBody.length > bodyMaxChars ? resBody.slice(0, bodyMaxChars) + '…' : resBody,
+          }
+        })
+        return ok(id, {
+          ok: true,
+          logs,
+          ...(allLogs.length > limitCount ? { truncated: true, totalCount: allLogs.length, shownCount: sliced.length } : {}),
+        })
       }
 
       case 'net.mock': {
