@@ -163,13 +163,17 @@ program
 
 program
   .command('view')
-  .description('查看当前页面元素树')
-  .option('--compact', '只显示可交互元素')
-  .option('--depth <n>', '最大展开深度')
-  .action(async (opts: { compact?: boolean; depth?: string }) => {
+  .description('查看当前页面元素树（默认紧凑交互摘要，--full 输出完整树）')
+  .option('--full', '输出完整树（含非交互节点）')
+  .option('--compact', '只显示可交互元素（默认已启用）')
+  .option('--depth <n>', '最大展开深度（默认 5，--full 时为 20）')
+  .option('--limit <n>', '最多显示交互节点数（默认 50）')
+  .action(async (opts: { full?: boolean; compact?: boolean; depth?: string; limit?: string }) => {
     await run('view', {
-      compact: opts.compact ?? false,
+      full: opts.full ?? false,
+      compact: opts.compact,
       depth: opts.depth ? parseInt(opts.depth, 10) : undefined,
+      limit: opts.limit ? parseInt(opts.limit, 10) : undefined,
     })
   })
 
@@ -229,16 +233,18 @@ program
 
 program
   .command('state [path]')
-  .description('读取页面 data')
-  .action(async (dataPath?: string) => {
-    await run('state', { path: dataPath })
+  .description('读取页面 data（默认返回顶层 key 摘要，--full 返回完整数据）')
+  .option('--full', '返回完整 data')
+  .action(async (dataPath: string | undefined, opts: { full?: boolean }) => {
+    await run('state', { path: dataPath, full: opts.full ?? false })
   })
 
 program
   .command('shot [path]')
-  .description('截图')
-  .action(async (savePath?: string) => {
-    await run('shot', { path: savePath })
+  .description('截图（默认保存到文件并返回路径，--base64 返回 base64）')
+  .option('--base64', '返回 base64 编码')
+  .action(async (savePath: string | undefined, opts: { base64?: boolean }) => {
+    await run('shot', { path: savePath, base64: opts.base64 ?? false })
   })
 
 // ─── Network ───────────────────────────────────────────────────────────────
@@ -277,23 +283,36 @@ net
 
 net
   .command('log')
-  .description('查看请求日志')
+  .description('查看请求日志（默认只返回摘要，--with-body 包含请求/响应体）')
   .option('--filter <url>', 'URL 过滤')
-  .action(async (opts: { filter?: string }) => {
-    const result = await callAndReturn('net.log', { filter: opts.filter })
+  .option('--limit <n>', '最多返回条数', '20')
+  .option('--with-body', '包含请求/响应体（最多 2000 字符）')
+  .action(async (opts: { filter?: string; limit?: string; withBody?: boolean }) => {
+    const result = await callAndReturn('net.log', {
+      filter: opts.filter,
+      limit: opts.limit ? parseInt(opts.limit, 10) : 20,
+      withBody: opts.withBody ?? false,
+    })
     if (!result) return
-    const r = result as { logs: Array<{ method: string; url: string; status: number; ts: number; mocked: number; req_body: string | null; res_body: string | null }> }
+    const r = result as {
+      logs: Array<{ method: string; url: string; status: number | null; ts: number; mocked: number; duration: number | null; req_body?: string | null; res_body?: string | null }>
+      truncated?: boolean; totalCount?: number; shownCount?: number
+    }
     if (program.opts()['json']) {
       printOk(result as Record<string, unknown>)
     } else {
+      if (r.truncated) {
+        console.log(`[显示 ${r.shownCount}/${r.totalCount} 条，使用 --limit 调整]`)
+      }
       for (const log of r.logs) {
         const mocked = log.mocked ? ' [MOCK]' : ''
-        console.log(`${new Date(log.ts).toISOString()} ${log.method} ${log.url} ${log.status ?? '-'}${mocked}`)
+        const dur = log.duration != null ? ` ${log.duration}ms` : ''
+        console.log(`${new Date(log.ts).toISOString()} ${log.method} ${log.url} ${log.status ?? '-'}${mocked}${dur}`)
         if (log.req_body) {
-          try { console.log(`  req: ${JSON.stringify(JSON.parse(log.req_body), null, 0)}`) } catch { console.log(`  req: ${log.req_body.slice(0, 200)}`) }
+          try { console.log(`  req: ${JSON.stringify(JSON.parse(log.req_body), null, 0)}`) } catch { console.log(`  req: ${log.req_body}`) }
         }
         if (log.res_body) {
-          try { console.log(`  res: ${JSON.stringify(JSON.parse(log.res_body), null, 0)}`) } catch { console.log(`  res: ${log.res_body.slice(0, 200)}`) }
+          try { console.log(`  res: ${JSON.stringify(JSON.parse(log.res_body), null, 0)}`) } catch { console.log(`  res: ${log.res_body}`) }
         }
       }
     }

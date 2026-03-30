@@ -51,8 +51,10 @@ wxpilot shot /tmp/screen.png
 
 - 编号在 `view` 时重新生成（从 %1 开始）
 - `goto` / `back` / `reload` 后编号失效
-- 使用失效的编号会报错：`ERR: %3 expired, run 'wxpilot view' to refresh`
-- **每次导航后必须重新执行 `wxpilot view` 以获取新编号**
+- 使用失效的编号会报错：`ERR: %N expired, run 'wxpilot view' to refresh`
+- 导航后需重新执行 `wxpilot view` 以获取新编号
+
+**交互节点识别**：基于双重信号检测——`data-*` 属性（outerWxml 快照保留，作为 bindtap 的代理）+ 源文件 WXML 的 tag+class 指纹（补全仅有 bindtap 无 data-* 的节点）。
 
 ---
 
@@ -80,10 +82,11 @@ wxpilot reload                   # 重载当前页面
 
 ### 视图（必须先执行才能获取 %N）
 ```bash
-wxpilot view                     # 输出完整元素树
-wxpilot view --compact           # 只显示可交互元素
-wxpilot view --depth 3           # 限制展开深度
-wxpilot wait %N [--timeout 5000] # 等待元素出现
+wxpilot view                       # 默认：紧凑交互摘要（compact=true, depth=5, limit=50）
+wxpilot view --full                # 完整树，含非交互节点（depth=20）
+wxpilot view --depth <n>           # 覆盖展开深度
+wxpilot view --limit <n>           # 覆盖交互节点数量上限（默认 50）
+wxpilot wait %N [--timeout 5000]   # 等待元素出现
 ```
 
 ### 交互
@@ -97,20 +100,24 @@ wxpilot scroll %N <up|down>      # 滚动
 ```bash
 wxpilot read %N                  # 读取元素文本
 wxpilot assert %N <expected>     # 断言文本（不匹配则退出码 1）
-wxpilot state [path]             # 读取页面 data（可选子路径如 "cart.items"）
-wxpilot shot [path]              # 截图，不传路径则输出 base64
+wxpilot state                    # 默认：返回顶层 key 摘要（类型+大小）
+wxpilot state [path]             # 返回指定子路径数据，如 "cart.items"
+wxpilot state --full             # 返回完整页面 data（数据量大，按需使用）
+wxpilot shot [path]              # 截图，保存到文件并返回路径
+wxpilot shot [path] --base64     # 截图并附带 base64（token 消耗大，按需使用）
 ```
 
 ### 网络代理
 ```bash
 # 用户需在微信开发者工具手动设置代理：设置 → 代理设置 → 手动 → 127.0.0.1:8899
-wxpilot net start [--port 8899] [--https]   # 启动代理（HTTPS 模式可解密 HTTPS 流量）
-wxpilot net stop                             # 停止代理
-wxpilot net log [--filter <url>]             # 查看请求日志
-wxpilot net mock <url> <jsonFile>            # 添加 mock（jsonFile 包含响应 JSON）
-wxpilot net unmock <url>                     # 移除 mock
-wxpilot net clear                            # 清空日志
-wxpilot net install-ca                       # 安装 CA 证书到系统钥匙串（HTTPS 模式首次使用）
+wxpilot net start [--port 8899] [--https]            # 启动代理（HTTPS 模式可解密 HTTPS 流量）
+wxpilot net stop                                      # 停止代理
+wxpilot net log [--filter <url>] [--limit 20]         # 查看请求摘要（默认不含 body）
+wxpilot net log [--filter <url>] --with-body          # 含请求/响应体（截断至 2000 字符）
+wxpilot net mock <url> <jsonFile>                     # 添加 mock（jsonFile 包含响应 JSON）
+wxpilot net unmock <url>                              # 移除 mock
+wxpilot net clear                                     # 清空日志
+wxpilot net install-ca                                # 安装 CA 证书到系统钥匙串（HTTPS 模式首次使用）
 ```
 
 **mock 文件格式（jsonFile）：**
@@ -164,31 +171,38 @@ wxpilot daemon restart           # 重启 daemon
 ## 典型 Agent 工作流
 
 ```bash
-# 1. 启动自动化（等待开发者工具就绪）
+# 1. 启动并连接
 wxpilot start /path/to/project
-# 2. 连接
 wxpilot connect
 
-# 2. 跳转到目标页面
-wxpilot goto /pages/order/index
+# 2. 检查当前状态（顶层 key 摘要，低 token）
+wxpilot status
+wxpilot state
 
-# 3. 查看页面，获取 ref
-wxpilot view --compact
+# 3. 跳转到目标页面，获取交互节点摘要
+wxpilot goto /pages/order/index
+wxpilot view               # 默认已是紧凑交互摘要
 
 # 4. 执行操作
 wxpilot type %2 "13800138000"
 wxpilot tap %1
 
 # 5. 等待页面变化后重新 view
-wxpilot wait %5 --timeout 3000
-wxpilot view --compact
+wxpilot view
 
-# 6. 断言结果
+# 6. 断言结果 / 读取特定字段
 wxpilot assert %5 "提交成功"
+wxpilot state cart.total   # 只读取需要的子字段
 
-# 7. 截图留档
+# 7. 截图留档（默认返回文件路径，不输出 base64）
 wxpilot shot /tmp/result.png
 ```
+
+**低 token 原则**：
+- 优先用 `state <path>` 替代 `state --full`
+- `shot` 默认只返回路径；仅在需要视觉分析时加 `--base64`
+- `net log` 默认只返回摘要；仅排障时加 `--with-body`
+- `view` 默认已紧凑；仅结构排查时加 `--full`
 
 ---
 
@@ -241,3 +255,10 @@ wxpilot net log --filter api.example.com
 2. Daemon 会在首次 CLI 调用时自动后台启动，30 分钟无操作自动退出
 3. HTTPS 代理首次使用需运行 `wxpilot net install-ca` 安装 CA 证书并重启开发者工具
 4. `wxpilot run` 中的 JS 在小程序页面 VM 中执行，不能访问 Node.js API
+5. 所有命令输出统一截断至 4000 字符，超限时附加 `[truncated, originalLength=X]` 提示；需完整数据时使用对应的 `--full` 参数
+
+**禁止行为**（避免 token 浪费）：
+- 不默认用 `shot` 输出 base64
+- 不默认用 `state` 全量输出
+- 不默认用 `net log` 附带 body
+- 不连续多次执行 `view --full`
