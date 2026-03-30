@@ -311,10 +311,11 @@ async function handle(req: RpcRequest): Promise<RpcResponse> {
           }
           return ok(id, { ok: true, summary, hint: 'use --full or specify a path to get full data' })
         }
-        const maxChars = full ? undefined : 4000
-        const dataStr = JSON.stringify(data)
-        if (maxChars && dataStr.length > maxChars) {
-          return ok(id, { ok: true, data: JSON.parse(dataStr.slice(0, maxChars)), truncated: true, originalLength: dataStr.length })
+        if (!full) {
+          const dataStr = JSON.stringify(data)
+          if (dataStr.length > 4000) {
+            return ok(id, { ok: true, data, truncated: true, originalLength: dataStr.length })
+          }
         }
         return ok(id, { ok: true, data })
       }
