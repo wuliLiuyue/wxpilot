@@ -103,9 +103,14 @@ wxpilot connect            # 连接（使用 start 记录的端点）
 执行 `wxpilot view` 后，页面可交互元素被分配临时编号 `%N`（从 %1 开始）。`goto`/`back`/`reload` 后编号失效，需重新执行 `view`。
 
 实现细节：
-- `snapshot/parser.ts` - WXML → 元素树
+- `snapshot/parser.ts` - WXML → 元素树，包含交互节点检测与 `extractEventFingerprints`
 - `snapshot/ref-store.ts` - Ref 存储和验证
 - `rpc-server.ts` - 方法调用时检查 ref 是否过期
+
+**交互节点检测（双重信号）**：
+微信开发者工具的 `outerWxml()` 快照**不保留** `bindtap` 等事件属性，因此无法直接通过事件属性判断交互性。当前采用双重信号：
+1. `data-*` 属性：outerWxml 快照中保留，作为 bindtap 的代理信号（约 80% 覆盖）
+2. 源文件指纹：读取 `{projectPath}/{pagePath}.wxml` 源文件，提取有 bindtap 节点的 `tag:sorted-classes` 指纹，补全无 data-* 的漏判节点（如仅有 `bindtap` 无 `data-*` 的按钮）
 
 ## 重要约束
 
@@ -114,6 +119,19 @@ wxpilot connect            # 连接（使用 start 记录的端点）
 3. **Unix Domain Socket**：CLI 与 Daemon 通信依赖 `~/.wxpilot/daemon.sock`
 4. **Daemon 生命周期**：首次 CLI 调用时启动，30 分钟空闲后自动退出
 5. **HTTPS 代理**：首次使用 `--https` 模式需运行 `wxpilot net install-ca` 安装 CA 证书并重启开发者工具
+
+## 低 token 输出设计
+
+各命令的默认输出均已针对 AI 上下文消耗优化：
+
+| 命令 | 默认行为 | 完整输出 |
+|------|----------|----------|
+| `view` | 紧凑交互摘要（compact=true, depth=5, limit=50） | `--full` |
+| `state` | 顶层 key 摘要（类型+大小） | `--full` 或指定 `path` |
+| `shot` | 保存文件，返回路径 | `--base64` |
+| `net log` | 摘要字段，limit=20，无 body | `--with-body` |
+
+所有命令输出统一截断至 4000 字符，超限时附加 `[truncated, originalLength=X]` 提示。
 
 ## 测试
 
