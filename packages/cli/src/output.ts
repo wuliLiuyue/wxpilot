@@ -1,18 +1,26 @@
 let jsonMode = false
 let verboseMode = false
 
+const MAX_OUTPUT_CHARS = 4000
+
 export function setJsonMode(v: boolean) { jsonMode = v }
 export function setVerboseMode(v: boolean) { verboseMode = v }
 export function isJsonMode() { return jsonMode }
 
+function safeTruncate(str: string): string {
+  if (str.length <= MAX_OUTPUT_CHARS) return str
+  return str.slice(0, MAX_OUTPUT_CHARS) + `\n[truncated, originalLength=${str.length}]`
+}
+
 export function printOk(data: Record<string, unknown>): void {
   if (jsonMode) {
-    console.log(JSON.stringify({ ok: true, ...data }))
+    const raw = JSON.stringify({ ok: true, ...data })
+    console.log(safeTruncate(raw))
     return
   }
   // human-readable output
   if (data['output']) {
-    console.log(data['output'])
+    console.log(safeTruncate(String(data['output'])))
     return
   }
   if (data['action'] === 'tap') {
@@ -32,19 +40,27 @@ export function printOk(data: Record<string, unknown>): void {
     return
   }
   if (data['base64']) {
-    console.log(`OK: screenshot captured (base64)\n${data['base64']}`)
+    const b64 = String(data['base64'])
+    console.log(`OK: screenshot captured (base64)\n${safeTruncate(b64)}`)
     return
   }
   if (data['path'] !== undefined && data['action'] === undefined) {
     console.log(`OK: screenshot saved → ${data['path']}`)
     return
   }
+  if (data['summary'] !== undefined) {
+    const hint = data['hint'] ? `\n[${data['hint']}]` : ''
+    console.log(safeTruncate(JSON.stringify(data['summary'], null, 2)) + hint)
+    return
+  }
   if (data['result'] !== undefined) {
-    console.log(`OK: ${JSON.stringify(data['result'])}`)
+    console.log(safeTruncate(`OK: ${JSON.stringify(data['result'])}`))
     return
   }
   if (data['data'] !== undefined) {
-    console.log(JSON.stringify(data['data'], null, 2))
+    const out = JSON.stringify(data['data'], null, 2)
+    console.log(safeTruncate(out))
+    if (data['truncated']) console.log(`[truncated, originalLength=${data['originalLength']}]`)
     return
   }
   // generic
@@ -52,7 +68,7 @@ export function printOk(data: Record<string, unknown>): void {
     .filter(([k]) => k !== 'ok')
     .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
     .join(' ')
-  console.log(`OK${parts ? ': ' + parts : ''}`)
+  console.log(safeTruncate(`OK${parts ? ': ' + parts : ''}`))
 }
 
 export function printErr(message: string, extra?: Record<string, unknown>): void {

@@ -25,18 +25,22 @@ wxpilot start /path/to/miniprogram --appid wx你的AppID
 # 第二步：连接
 wxpilot connect
 
-# 查看页面，获取可交互元素引用 %N
-wxpilot view --compact
+# 查看页面，获取可交互元素引用 %N（默认已是紧凑摘要）
+wxpilot view
 
 # 点击、输入、导航
 wxpilot tap %1
 wxpilot type %2 "13800138000"
 wxpilot goto /pages/order/index
 
-# 导航后需重新获取引用
-wxpilot view --compact
+# 导航后重新获取引用
+wxpilot view
 
-# 断言、截图
+# 读取页面状态（默认只返回顶层 key 摘要）
+wxpilot state
+wxpilot state cart.total          # 只读需要的子字段
+
+# 断言、截图（默认返回路径，不输出 base64）
 wxpilot assert %3 "提交成功"
 wxpilot shot /tmp/result.png
 ```
@@ -44,6 +48,8 @@ wxpilot shot /tmp/result.png
 ## Ref 机制
 
 执行 `wxpilot view` 后，页面可交互元素被分配临时编号 `%N`（从 %1 开始）。`goto` / `back` / `reload` 后编号失效，需重新执行 `view`。
+
+交互节点通过双重信号识别：`data-*` 属性（outerWxml 快照代理信号）+ 源文件 WXML 事件指纹（补全仅有 bindtap 无 data-* 的节点）。
 
 ## 命令参考
 
@@ -69,7 +75,10 @@ wxpilot reload
 
 ### 视图
 ```bash
-wxpilot view [--compact] [--depth <n>]
+wxpilot view                       # 默认：紧凑交互摘要（compact=true, depth=5, limit=50）
+wxpilot view --full                # 完整树（含非交互节点，depth=20）
+wxpilot view --depth <n>           # 覆盖展开深度
+wxpilot view --limit <n>           # 覆盖交互节点数量上限（默认 50）
 wxpilot wait %N [--timeout 5000]
 ```
 
@@ -84,20 +93,24 @@ wxpilot scroll %N <up|down>
 ```bash
 wxpilot read %N
 wxpilot assert %N <expected>
-wxpilot state [path]
-wxpilot shot [path]
+wxpilot state                    # 默认：顶层 key 摘要（类型+大小）
+wxpilot state [path]             # 指定子路径，如 "cart.items"
+wxpilot state --full             # 完整页面 data
+wxpilot shot [path]              # 截图，保存文件并返回路径
+wxpilot shot [path] --base64     # 截图并附带 base64
 ```
 
 ### 网络代理
 ```bash
 # 需在开发者工具手动设置代理：设置 → 代理设置 → 手动 → 127.0.0.1:8899
-wxpilot net start [--port 8899] [--https]   # --https 模式可解密 HTTPS 流量
+wxpilot net start [--port 8899] [--https]            # --https 模式可解密 HTTPS 流量
 wxpilot net stop
-wxpilot net log [--filter <url>]
+wxpilot net log [--filter <url>] [--limit 20]         # 默认：摘要，无 body
+wxpilot net log [--filter <url>] --with-body          # 含请求/响应体（截断至 2000 字符）
 wxpilot net mock <url> <jsonFile>
 wxpilot net unmock <url>
 wxpilot net clear
-wxpilot net install-ca                      # 安装 CA 证书到系统钥匙串（HTTPS 模式首次使用）
+wxpilot net install-ca                                # 安装 CA 证书到系统钥匙串（HTTPS 模式首次使用）
 ```
 
 ### 执行

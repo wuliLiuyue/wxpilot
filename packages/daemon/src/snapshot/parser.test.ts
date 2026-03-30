@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseWxml, assignRefs, renderTree } from './parser.js'
+import { parseWxml, assignRefs, renderTree, extractEventFingerprints } from './parser.js'
 
 const SAMPLE_WXML = `
 <view class="container">
@@ -72,7 +72,7 @@ describe('renderTree', () => {
   it('生成可读的文本树', () => {
     const tree = parseWxml(SAMPLE_WXML)
     assignRefs(tree)
-    const output = renderTree(tree)
+    const { output } = renderTree(tree)
     expect(output).toContain('[button]')
     expect(output).toContain('[input]')
     expect(output).toContain('%1')
@@ -82,17 +82,136 @@ describe('renderTree', () => {
   it('--compact 只输出有交互子节点的分支', () => {
     const tree = parseWxml(SAMPLE_WXML)
     assignRefs(tree)
-    const output = renderTree(tree, { compact: true })
+    const { output } = renderTree(tree, { compact: true })
     expect(output).toContain('[button]')
-    // pure text with no interactive descendant should be omitted or kept
-    // (text has no interactive descendant)
   })
 
-  it('--depth 1 限制展开层数', () => {
+  it('--depth 0 限制展开层数', () => {
     const tree = parseWxml(SAMPLE_WXML)
     assignRefs(tree)
-    const full = renderTree(tree)
-    const shallow = renderTree(tree, { depth: 0 })
+    const { output: full } = renderTree(tree)
+    const { output: shallow } = renderTree(tree, { depth: 0 })
     expect(shallow.split('\n').length).toBeLessThanOrEqual(full.split('\n').length)
+  })
+
+  it('limit 限制交互节点数量并返回 shownCount/totalCount', () => {
+    const tree = parseWxml(SAMPLE_WXML)
+    assignRefs(tree)
+    const { shownCount, totalCount } = renderTree(tree, { compact: true, limit: 1 })
+    expect(shownCount).toBe(1)
+    expect(totalCount).toBeGreaterThan(1)
+  })
+
+  it('data-* 节点被视为交互节点（outerWxml 快照代理信号）', () => {
+    const wxml = `<view><view data-id="1">可点击项</view></view>`
+    const tree = parseWxml(wxml)
+    const { totalCount } = renderTree(tree)
+    expect(totalCount).toBe(1)
+  })
+
+  it('hover-start-time 节点被视为交互（Taro/NutUI onClick 编译特征）', () => {
+    const wxml = `<page><view class="nut-sku-item" hover-class="none" hover-start-time="50" hover-stay-time="400">XL</view></page>`
+    const tree = parseWxml(wxml)
+    const { totalCount } = renderTree(tree)
+    expect(totalCount).toBe(1)
+  })
+
+  it('仅有 hover-start-time 时也视为交互', () => {
+    const wxml = `<page><view hover-start-time="50">按钮</view></page>`
+    const tree = parseWxml(wxml)
+    const { totalCount } = renderTree(tree)
+    expect(totalCount).toBe(1)
+  })
+
+  it('无 hover timing 的普通 view 不误判为交互', () => {
+    const wxml = `<page><view class="title">标题</view></page>`
+    const tree = parseWxml(wxml)
+    const { totalCount } = renderTree(tree)
+    expect(totalCount).toBe(0)
+  })
+
+  it('data-sid 不触发交互判断（Taro 框架内部属性）', () => {
+    const wxml = `<page><view data-sid="_XT" class="title">标题</view></page>`
+    const tree = parseWxml(wxml)
+    const { totalCount } = renderTree(tree)
+    expect(totalCount).toBe(0)
+  })
+
+  it('data-v- 前缀不触发交互判断（Vue 框架内部属性）', () => {
+    const wxml = `<page><view data-v-abc123="1">内容</view></page>`
+    const tree = parseWxml(wxml)
+    const { totalCount } = renderTree(tree)
+    expect(totalCount).toBe(0)
+  })
+})
+
+describe('extractEventFingerprints', () => {
+  it('提取有 bindtap 节点的 tag+class 指纹', () => {
+    const sourceWxml = `
+      <view class="card-item shop" bindtap="handleJump" data-url="/foo">门店</view>
+      <view class="cake-item" bindtap="showSheet">蛋糕</view>
+      <view class="pure-display">纯展示</view>
+    `
+    const fps = extractEventFingerprints(sourceWxml)
+    expect(fps.has('view:card-item,shop')).toBe(true)
+    expect(fps.has('view:cake-item')).toBe(true)
+    expect(fps.has('view:pure-display')).toBe(false)
+  })
+
+  it('sourceWxml 指纹可补全无 data-* 的漏判节点', () => {
+    // outerWxml 快照中 bindtap 已丢失，只剩 class
+    const outerWxml = `<page><view class="cake-item">蛋糕预订</view></page>`
+    // 源文件有 bindtap
+    const sourceWxml = `<view class="cake-item" bindtap="showSheet">蛋糕</view>`
+    const fps = extractEventFingerprints(sourceWxml)
+    const tree = parseWxml(outerWxml, 20, fps)
+    const { totalCount } = renderTree(tree)
+    expect(totalCount).toBe(1)
+  })
+
+  it('无 class 属性的节点不生成指纹', () => {
+    const sourceWxml = `<view bindtap="handleTap">无 class</view>`
+    const fps = extractEventFingerprints(sourceWxml)
+    expect(fps.size).toBe(0)
+  })
+
+  // 已知局限：tag:class 指纹无法区分相同 class 下可点击与不可点击的节点，会产生误判
+  // 这是 tag+class 指纹机制的固有限制，可接受的误判率换取源文件补全覆盖率
+  it('指纹碰撞：相同 tag:class 下所有节点均被视为交互（已知误判）', () => {
+    const sourceWxml = `
+      <view class="item" bindtap="handler">可点击</view>
+      <view class="item">不可点击的展示项</view>
+    `
+    const fps = extractEventFingerprints(sourceWxml)
+    expect(fps.has('view:item')).toBe(true)
+
+    const outerWxml = `<page>
+      <view class="item">可点击</view>
+      <view class="item">不可点击的展示项</view>
+    </page>`
+    const tree = parseWxml(outerWxml, 20, fps)
+    const { totalCount } = renderTree(tree)
+    // 两个节点均被标记为交互（含 1 个误判），这是已知行为
+    expect(totalCount).toBe(2)
+  })
+
+  it('指纹碰撞：多个相同 class 节点全部误判为交互（已知误判）', () => {
+    const sourceWxml = `
+      <view class="btn primary" bindtap="onSubmit">提交</view>
+      <view class="btn primary">禁用状态</view>
+      <view class="btn primary" bindtap="onCancel">取消</view>
+    `
+    const fps = extractEventFingerprints(sourceWxml)
+    expect(fps.has('view:btn,primary')).toBe(true)
+
+    const outerWxml = `<page>
+      <view class="btn primary">提交</view>
+      <view class="btn primary">禁用状态</view>
+      <view class="btn primary">取消</view>
+    </page>`
+    const tree = parseWxml(outerWxml, 20, fps)
+    const { totalCount } = renderTree(tree)
+    // 3 个节点均被标记为交互（含 1 个误判），这是已知行为
+    expect(totalCount).toBe(3)
   })
 })
