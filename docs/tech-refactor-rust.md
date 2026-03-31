@@ -189,6 +189,31 @@
   - `shownCount`
   - `totalCount`
 - `view` 的 header 格式与当前保持一致，避免 CLI 输出漂移
+- `find` 复用同一份 snapshot 构建链路：
+  - 读取 `outerWxml`
+  - 提取可选 `eventFingerprints`
+  - 解析 `ElementNode` 树
+  - 为当前页面全部交互节点分配 ref
+  - 在树上执行查询并渲染摘要
+- `find` 的匹配维度与 TS 保持一致：
+  - `text`
+  - `placeholder`
+  - `tag`
+  - `class`
+- `find` 的匹配规则固定为：
+  - 大小写不敏感
+  - 模糊包含匹配
+  - 默认仅查询交互节点
+  - `all=true` 时允许返回非交互节点
+- `find` 的内部结果类型固定为：
+  - `FindMatch { ref?, tag, classes, text?, placeholder?, selector, interactive }`
+  - `FindResult { matches, shown_count, total_count }`
+- `renderFindMatches` 行为保持一致：
+  - 交互节点显示 `%N`
+  - 非交互节点显示 `-`
+  - 优先显示 `text`
+  - 无文本时回退显示 `placeholder`
+  - 默认 `textLimit=30`
 
 ### 6. Ref Store
 
@@ -198,7 +223,12 @@
   - `snapshot_version`
   - `page_path`
   - `created_at`
-- 每次 `view` 生成新的 `snapshot_version`
+- 每次 `view` 或 `find` 生成新的 `snapshot_version`
+- `find` 与当前 TS 行为一致：
+  - 基于当前整页 snapshot 为全部交互节点重新分配 ref
+  - `matches` 中交互节点返回 ref
+  - `all=true` 命中的非交互节点 `ref` 为空
+- `view/find` 生成的新快照会覆盖之前的 ref 基线
 - `goto/back/reload/connect/disconnect` 后统一失效全部 ref
 - `tap/type/read/assert/scroll` 必须在执行前验证：
   - ref 存在
@@ -253,6 +283,13 @@
   - 错误消息文本
   - 截断提示文本
   - human-readable 友好字段
+- `find` 的兼容行为也统一收敛在 `wxp-compat`：
+  - 默认 `all=false`
+  - 默认 `limit=10`
+  - 空查询错误文本固定为 `query_required`
+  - 未命中输出固定为 `未找到匹配项`
+  - header 格式固定为 `页面: {pagePath}`、`查找: "{query}"`、分隔线
+  - 截断时附加 `[显示 shown/total 条]`
 - 目标是 Rust 业务实现可以内部重构，但对外结果稳定
 
 ### 10. 为未来商业化预留的挂点
@@ -278,6 +315,7 @@
 - `back`
 - `reload`
 - `view`
+- `find`
 - `wait`
 - `tap`
 - `type`
@@ -303,6 +341,22 @@
 - `version`
 - `capabilities`
 
+### `find` RPC 契约
+
+- 请求参数：
+  - `query: string`
+  - `all?: boolean`
+  - `limit?: number`
+- 返回字段：
+  - `ok`
+  - `pagePath`
+  - `query`
+  - `matches`
+  - `output`
+  - 可选 `truncated`
+  - 可选 `shownCount`
+  - 可选 `totalCount`
+
 ### 核心内部类型
 
 - `RpcRequest`
@@ -313,6 +367,8 @@
 - `PageHandle`
 - `ElementHandle`
 - `ElementNode`
+- `FindMatch`
+- `FindResult`
 - `RefEntry`
 - `RequestLog`
 - `MockRule`
@@ -341,7 +397,8 @@
 
 ### Phase 3：snapshot/ref
 
-- 完成 `view/wait/read/assert`
+- 完成 `view/find/wait/read/assert`
+- 完成 `find` 查询与摘要渲染，并与现有 parser tests 行为对齐
 - 与现有 parser tests 行为对齐
 - 引入 `snapshot_version`
 
@@ -367,7 +424,13 @@
 
 - TS daemon 与 Rust daemon 跑同一组 CLI 用例
 - 比较成功结构、失败结构、错误码、超时、默认输出
-- `status/view/state/shot/net log` 必须逐项对齐
+- `status/view/find/state/shot/net log` 必须逐项对齐
+- `find` 需要覆盖：
+  - 默认仅交互节点
+  - `all=true` 可返回非交互节点
+  - `limit` 只截断返回数量，不影响 `totalCount`
+  - 空结果输出 `未找到匹配项`
+  - 空查询返回 `query_required`
 
 ### Automator 测试
 
@@ -383,7 +446,11 @@
 
 - 现有 parser tests 全量迁移到 Rust
 - 保留已知局限测试，如 `tag:class` 指纹碰撞误判
+- `find` 覆盖 `text/placeholder/class/tag` 四类匹配
+- `find` 覆盖大小写不敏感与模糊包含行为
+- `all=true` 命中的非交互节点 `ref` 为空
 - 校验 `goto/back/reload` 后 ref 失效
+- 校验 `view -> find` 后旧 ref 被新 `snapshot_version` 覆盖
 - 校验 `snapshot_version` 校验逻辑
 
 ### Proxy/Store 测试
