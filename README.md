@@ -28,6 +28,9 @@ wxpilot connect
 # 查看页面，获取可交互元素引用 %N（默认已是紧凑摘要）
 wxpilot view
 
+# 低 token 查找元素，直接返回匹配到的 %N
+wxpilot find 提交
+
 # 点击、输入、导航
 wxpilot tap %1
 wxpilot type %2 "13800138000"
@@ -79,6 +82,9 @@ wxpilot view                       # 默认：紧凑交互摘要（compact=true,
 wxpilot view --full                # 完整树（含非交互节点，depth=20）
 wxpilot view --depth <n>           # 覆盖展开深度
 wxpilot view --limit <n>           # 覆盖交互节点数量上限（默认 50）
+wxpilot find <query>               # 查找 text/class/placeholder/tag，默认只查交互节点
+wxpilot find <query> --all         # 包含非交互节点
+wxpilot find <query> --limit <n>   # 覆盖匹配返回上限（默认 10）
 wxpilot wait %N [--timeout 5000]
 ```
 
