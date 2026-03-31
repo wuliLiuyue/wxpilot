@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseWxml, assignRefs, renderTree, extractEventFingerprints } from './parser.js'
+import { parseWxml, assignRefs, renderTree, extractEventFingerprints, findNodes, renderFindMatches } from './parser.js'
 
 const SAMPLE_WXML = `
 <view class="container">
@@ -213,5 +213,86 @@ describe('extractEventFingerprints', () => {
     const { totalCount } = renderTree(tree)
     // 3 个节点均被标记为交互（含 1 个误判），这是已知行为
     expect(totalCount).toBe(3)
+  })
+})
+
+describe('findNodes', () => {
+  it('按文本匹配交互节点并返回 ref', () => {
+    const tree = parseWxml(SAMPLE_WXML)
+    assignRefs(tree)
+    const { matches, totalCount } = findNodes(tree, '提交')
+    expect(totalCount).toBe(1)
+    expect(matches).toHaveLength(1)
+    expect(matches[0]?.tag).toBe('button')
+    expect(matches[0]?.ref).toBe(1)
+  })
+
+  it('按 placeholder 匹配输入框', () => {
+    const tree = parseWxml(SAMPLE_WXML)
+    assignRefs(tree)
+    const { matches } = findNodes(tree, '手机号')
+    expect(matches).toHaveLength(1)
+    expect(matches[0]?.tag).toBe('input')
+    expect(matches[0]?.placeholder).toBe('手机号')
+  })
+
+  it('按 class 模糊匹配并忽略大小写', () => {
+    const tree = parseWxml(SAMPLE_WXML)
+    assignRefs(tree)
+    const { matches } = findNodes(tree, 'BTN-SUB')
+    expect(matches).toHaveLength(1)
+    expect(matches[0]?.classes).toContain('btn-submit')
+  })
+
+  it('按 tag 匹配交互节点', () => {
+    const tree = parseWxml(SAMPLE_WXML)
+    assignRefs(tree)
+    const { matches } = findNodes(tree, 'INPUT')
+    expect(matches).toHaveLength(1)
+    expect(matches[0]?.tag).toBe('input')
+  })
+
+  it('默认只返回交互节点', () => {
+    const tree = parseWxml(SAMPLE_WXML)
+    assignRefs(tree)
+    const { matches, totalCount } = findNodes(tree, '合计')
+    expect(totalCount).toBe(0)
+    expect(matches).toHaveLength(0)
+  })
+
+  it('interactiveOnly=false 时可返回非交互节点', () => {
+    const tree = parseWxml(SAMPLE_WXML)
+    assignRefs(tree)
+    const { matches, totalCount } = findNodes(tree, '合计', { interactiveOnly: false })
+    expect(totalCount).toBe(2)
+    expect(matches[0]?.interactive).toBe(false)
+    expect(matches[0]?.ref).toBeUndefined()
+  })
+
+  it('limit 限制返回数量但保留总匹配数', () => {
+    const tree = parseWxml(SAMPLE_WXML)
+    assignRefs(tree)
+    const { matches, shownCount, totalCount } = findNodes(tree, '¥', { interactiveOnly: false, limit: 1 })
+    expect(matches).toHaveLength(1)
+    expect(shownCount).toBe(1)
+    expect(totalCount).toBeGreaterThan(1)
+  })
+})
+
+describe('renderFindMatches', () => {
+  it('生成紧凑匹配摘要', () => {
+    const tree = parseWxml(SAMPLE_WXML)
+    assignRefs(tree)
+    const { matches } = findNodes(tree, '提交')
+    const output = renderFindMatches(matches)
+    expect(output).toContain('%1 [button].btn-submit "提交订单"')
+  })
+
+  it('无文本时回退显示 placeholder', () => {
+    const tree = parseWxml(SAMPLE_WXML)
+    assignRefs(tree)
+    const { matches } = findNodes(tree, '手机号')
+    const output = renderFindMatches(matches)
+    expect(output).toContain('%2 [input] placeholder="手机号"')
   })
 })

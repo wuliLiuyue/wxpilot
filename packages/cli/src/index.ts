@@ -178,6 +178,19 @@ program
   })
 
 program
+  .command('find <query>')
+  .description('按 text/class/placeholder/tag 查找元素（默认只查交互节点）')
+  .option('--all', '包含非交互节点')
+  .option('--limit <n>', '最多返回匹配条数', '10')
+  .action(async (query: string, opts: { all?: boolean; limit?: string }) => {
+    await run('find', {
+      query,
+      all: opts.all ?? false,
+      limit: opts.limit ? parseInt(opts.limit, 10) : 10,
+    })
+  })
+
+program
   .command('wait <ref>')
   .description('等待元素出现（%N 或 selector）')
   .option('--timeout <ms>', '超时毫秒数', '5000')
