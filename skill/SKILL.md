@@ -35,6 +35,9 @@ wxpilot connect
 # 查看当前页面，获取 %N 引用
 wxpilot view
 
+# 低 token 查找元素，直接返回匹配到的 %N
+wxpilot find 提交
+
 # 交互
 wxpilot tap %1
 wxpilot type %2 "13800138000"
@@ -47,12 +50,12 @@ wxpilot shot /tmp/screen.png
 
 ## Ref 机制（核心概念）
 
-每次执行 `wxpilot view` 后，页面中所有可交互元素都会被分配一个临时编号 `%N`。
+每次执行 `wxpilot view` 或 `wxpilot find` 后，页面中所有可交互元素都会被分配一个临时编号 `%N`。
 
-- 编号在 `view` 时重新生成（从 %1 开始）
+- 编号在 `view` / `find` 时重新生成（从 %1 开始）
 - `goto` / `back` / `reload` 后编号失效
 - 使用失效的编号会报错：`ERR: %N expired, run 'wxpilot view' to refresh`
-- 导航后需重新执行 `wxpilot view` 以获取新编号
+- 导航后需重新执行 `wxpilot view` 或 `wxpilot find` 以获取新编号
 
 **交互节点识别**：基于双重信号检测——`data-*` 属性（outerWxml 快照保留，作为 bindtap 的代理）+ 源文件 WXML 的 tag+class 指纹（补全仅有 bindtap 无 data-* 的节点）。
 
@@ -86,6 +89,9 @@ wxpilot view                       # 默认：紧凑交互摘要（compact=true,
 wxpilot view --full                # 完整树，含非交互节点（depth=20）
 wxpilot view --depth <n>           # 覆盖展开深度
 wxpilot view --limit <n>           # 覆盖交互节点数量上限（默认 50）
+wxpilot find <query>               # 查找 text/class/placeholder/tag，默认只查交互节点
+wxpilot find <query> --all         # 包含非交互节点
+wxpilot find <query> --limit <n>   # 覆盖匹配返回上限（默认 10）
 wxpilot wait %N [--timeout 5000]   # 等待元素出现
 ```
 
@@ -179,16 +185,17 @@ wxpilot connect
 wxpilot status
 wxpilot state
 
-# 3. 跳转到目标页面，获取交互节点摘要
+# 3. 跳转到目标页面，优先用低 token 查找获取目标 %N
 wxpilot goto /pages/order/index
-wxpilot view               # 默认已是紧凑交互摘要
+wxpilot find 提交          # 优先按 text/class/placeholder/tag 查找
+# 若需要完整上下文，再退回 wxpilot view
 
 # 4. 执行操作
 wxpilot type %2 "13800138000"
 wxpilot tap %1
 
-# 5. 等待页面变化后重新 view
-wxpilot view
+# 5. 等待页面变化后重新获取引用
+wxpilot find 提交成功
 
 # 6. 断言结果 / 读取特定字段
 wxpilot assert %5 "提交成功"
@@ -199,6 +206,7 @@ wxpilot shot /tmp/result.png
 ```
 
 **低 token 原则**：
+- 优先用 `find <query>` 替代通读 `view`
 - 优先用 `state <path>` 替代 `state --full`
 - `shot` 默认只返回路径；仅在需要视觉分析时加 `--base64`
 - `net log` 默认只返回摘要；仅排障时加 `--with-body`
@@ -257,7 +265,16 @@ wxpilot net log --filter api.example.com
 4. `wxpilot run` 中的 JS 在小程序页面 VM 中执行，不能访问 Node.js API
 5. 所有命令输出统一截断至 4000 字符，超限时附加 `[truncated, originalLength=X]` 提示；需完整数据时使用对应的 `--full` 参数
 
+**默认端口回退策略**：
+- 默认先使用 `9420`
+- 如果出现 `connect` 成功但 `status` 为 `connected=false`、`projectPath=null`、`view` 超时、或 `run` 报 `Connection closed`，不要继续重试当前会话
+- 立即执行 `wxpilot daemon stop` 清理当前 daemon，再用新的端口重启，例如 `--auto-port 9421`
+- 若 `9421` 仍异常，按序尝试 `9422`、`9423`
+- 切换端口后必须显式执行 `wxpilot connect --ws ws://127.0.0.1:<新端口>`，再用 `status` 或 `run '1+1'` 做最小连通性确认
+- 只有在最小连通性确认通过后，再继续 `view`、`find`、`tap` 等操作
+
 **禁止行为**（避免 token 浪费）：
+- 明明能用 `find` 定位时，先跑整页 `view`
 - 不默认用 `shot` 输出 base64
 - 不默认用 `state` 全量输出
 - 不默认用 `net log` 附带 body

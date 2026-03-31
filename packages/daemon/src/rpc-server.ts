@@ -6,7 +6,7 @@ import { spawn, exec } from 'child_process'
 import { promisify } from 'util'
 import { SOCK_FILE, IDLE_TIMEOUT_MS } from './constants.js'
 import * as auto from './automator/index.js'
-import { parseWxml, assignRefs, renderTree, extractEventFingerprints } from './snapshot/parser.js'
+import { parseWxml, assignRefs, renderTree, extractEventFingerprints, findNodes, renderFindMatches } from './snapshot/parser.js'
 import { RefStore } from './snapshot/ref-store.js'
 import * as proxy from './proxy/index.js'
 import { CA_DIR } from './constants.js'
@@ -62,6 +62,25 @@ function resolveRef(ref: number): string {
   const sel = refStore.resolve(ref)
   if (!sel) throw Object.assign(new Error('ref_expired'), { code: ERR.REF_EXPIRED, ref })
   return sel
+}
+
+async function buildSnapshot(maxDepth = 20) {
+  const wxml = await auto.getWxml()
+  const pagePath = await auto.getPagePath()
+
+  let eventFingerprints: Set<string> | undefined
+  const projectPath = auto.getConnectedPath()
+  if (projectPath) {
+    const sourcePath = path.join(projectPath, pagePath + '.wxml')
+    if (fs.existsSync(sourcePath)) {
+      eventFingerprints = extractEventFingerprints(fs.readFileSync(sourcePath, 'utf8'))
+    }
+  }
+
+  const tree = parseWxml(wxml, maxDepth, eventFingerprints)
+  const refs = assignRefs(tree)
+  refStore.assign(refs)
+  return { pagePath, tree }
 }
 
 const CLI_CANDIDATES = [
@@ -203,28 +222,37 @@ async function handle(req: RpcRequest): Promise<RpcResponse> {
         const depth = (params['depth'] as number | undefined) ?? (full ? 20 : 5)
         const limit = full ? undefined : (params['limit'] as number | undefined) ?? 50
         const textLimit = full ? 40 : 30
-        const wxml = await auto.getWxml()
-        const pagePath = await auto.getPagePath()
-
-        // 读取源 WXML 文件，补全 outerWxml 快照中被剥离的 bindtap 等事件属性
-        let eventFingerprints: Set<string> | undefined
-        const projectPath = auto.getConnectedPath()
-        if (projectPath) {
-          const sourcePath = path.join(projectPath, pagePath + '.wxml')
-          if (fs.existsSync(sourcePath)) {
-            eventFingerprints = extractEventFingerprints(fs.readFileSync(sourcePath, 'utf8'))
-          }
-        }
-
-        const tree = parseWxml(wxml, depth, eventFingerprints)
-        const refs = assignRefs(tree)
-        refStore.assign(refs)
+        const { pagePath, tree } = await buildSnapshot(depth)
         const { output: rendered, shownCount, totalCount } = renderTree(tree, { compact, depth, limit, textLimit })
         const truncated = limit != null && totalCount > shownCount
         const header = `页面: ${pagePath}${truncated ? ` [显示 ${shownCount}/${totalCount} 个交互节点]` : ''}\n${'─'.repeat(34)}`
         return ok(id, {
           ok: true,
           pagePath,
+          output: `${header}\n${rendered}`,
+          ...(truncated ? { truncated: true, shownCount, totalCount } : {}),
+        })
+      }
+
+      case 'find': {
+        const query = String(params['query'] ?? '').trim()
+        if (!query) {
+          return err(id, ERR.INTERNAL, 'query_required')
+        }
+        const interactiveOnly = !((params['all'] as boolean | undefined) ?? false)
+        const limit = (params['limit'] as number | undefined) ?? 10
+        const { pagePath, tree } = await buildSnapshot(20)
+        const { matches, shownCount, totalCount } = findNodes(tree, query, { interactiveOnly, limit })
+        const truncated = totalCount > shownCount
+        const rendered = matches.length
+          ? renderFindMatches(matches, { textLimit: 30 })
+          : '未找到匹配项'
+        const header = `页面: ${pagePath}\n查找: ${JSON.stringify(query)}${truncated ? ` [显示 ${shownCount}/${totalCount} 条]` : ''}\n${'─'.repeat(34)}`
+        return ok(id, {
+          ok: true,
+          pagePath,
+          query,
+          matches,
           output: `${header}\n${rendered}`,
           ...(truncated ? { truncated: true, shownCount, totalCount } : {}),
         })

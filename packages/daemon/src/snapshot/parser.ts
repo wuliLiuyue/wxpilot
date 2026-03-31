@@ -159,6 +159,22 @@ export interface RenderResult {
   totalCount: number
 }
 
+export interface FindMatch {
+  ref?: number
+  tag: string
+  classes: string[]
+  text?: string
+  placeholder?: string
+  selector: string
+  interactive: boolean
+}
+
+export interface FindResult {
+  matches: FindMatch[]
+  shownCount: number
+  totalCount: number
+}
+
 interface RenderCounter {
   shown: number
   total: number
@@ -230,4 +246,64 @@ function _countInteractive(nodes: ElementNode[], counter: RenderCounter): void {
 function hasInteractiveDescendant(node: ElementNode): boolean {
   if (node.interactive) return true
   return node.children.some(hasInteractiveDescendant)
+}
+
+function matchesQuery(node: ElementNode, query: string): boolean {
+  if (!query) return false
+  const normalized = query.toLowerCase()
+  if (node.text?.toLowerCase().includes(normalized)) return true
+  if (node.placeholder?.toLowerCase().includes(normalized)) return true
+  if (node.tag.toLowerCase().includes(normalized)) return true
+  return node.classes.some(cls => cls.toLowerCase().includes(normalized))
+}
+
+export function findNodes(
+  nodes: ElementNode[],
+  query: string,
+  opts: { interactiveOnly?: boolean; limit?: number } = {},
+): FindResult {
+  const matches: FindMatch[] = []
+  let totalCount = 0
+  const interactiveOnly = opts.interactiveOnly ?? true
+  const limit = opts.limit
+
+  function walk(node: ElementNode): void {
+    const eligible = !interactiveOnly || node.interactive
+    if (eligible && matchesQuery(node, query)) {
+      totalCount++
+      if (limit == null || matches.length < limit) {
+        matches.push({
+          ref: node.ref,
+          tag: node.tag,
+          classes: node.classes,
+          text: node.text,
+          placeholder: node.placeholder,
+          selector: node.selector,
+          interactive: node.interactive,
+        })
+      }
+    }
+    for (const child of node.children) walk(child)
+  }
+
+  for (const node of nodes) walk(node)
+
+  return { matches, shownCount: matches.length, totalCount }
+}
+
+export function renderFindMatches(
+  matches: FindMatch[],
+  opts: { textLimit?: number } = {},
+): string {
+  const textLimit = opts.textLimit ?? 30
+  return matches.map((match) => {
+    const refPart = match.ref != null ? `%${match.ref}` : '-'
+    const tagPart = match.interactive ? `[${match.tag}]` : match.tag
+    const clsPart = match.classes.length ? `.${match.classes[0]}` : ''
+    const textPart = match.text ? ` "${match.text.slice(0, textLimit)}"` : ''
+    const placeholderPart = !match.text && match.placeholder
+      ? ` placeholder="${match.placeholder.slice(0, textLimit)}"`
+      : ''
+    return `${refPart} ${tagPart}${clsPart}${textPart}${placeholderPart}`
+  }).join('\n')
 }
