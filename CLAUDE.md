@@ -127,6 +127,7 @@ wxpilot connect            # 连接（使用 start 记录的端点）
 | 命令 | 默认行为 | 完整输出 |
 |------|----------|----------|
 | `view` | 紧凑交互摘要（compact=true, depth=5, limit=50） | `--full` |
+| `find` | 返回匹配元素最小摘要（默认仅交互节点，limit=10） | `--all` |
 | `state` | 顶层 key 摘要（类型+大小） | `--full` 或指定 `path` |
 | `shot` | 保存文件，返回路径 | `--base64` |
 | `net log` | 摘要字段，limit=20，无 body | `--with-body` |
