@@ -1,5 +1,6 @@
 use std::{
-    fs, io,
+    fs,
+    io::{self, BufRead, BufReader, Write},
     os::unix::net::{UnixListener, UnixStream},
     path::{Path, PathBuf},
     process,
@@ -8,7 +9,9 @@ use std::{
 use serde_json::{json, Value};
 
 use crate::{
+    action_path,
     devtools::DevtoolsLauncher,
+    net_path, read_path,
     runtime::{DaemonRuntime, StateStore},
 };
 
@@ -28,14 +31,13 @@ impl Default for RuntimePaths {
         let root_dir = std::env::var_os("HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("."))
-            .join(".wxpilot")
-            .join("rust");
+            .join(".wxpilot");
         let rust_socket = root_dir.join("rust-daemon.sock");
         let rust_pid = root_dir.join("rust-daemon.pid");
         let state_file = root_dir.join("rust-daemon-state.json");
         let db_file = root_dir.join("rust-daemon.db");
-        let ca_dir = root_dir.join("ca");
-        let log_dir = root_dir.join("logs");
+        let ca_dir = root_dir.join("rust-ca");
+        let log_dir = root_dir.join("rust-logs");
 
         Self {
             root_dir,
@@ -75,50 +77,58 @@ impl ServerState {
         }
     }
 
-    fn persist_runtime_state(&mut self, saved: crate::runtime::DaemonState) -> io::Result<()> {
+    pub(crate) fn persist_runtime_state(
+        &mut self,
+        saved: crate::runtime::DaemonState,
+    ) -> io::Result<()> {
         self.store.save(&saved)?;
         self.runtime.saved = saved;
         Ok(())
     }
 
-    fn clear_connection_state(&mut self) -> io::Result<()> {
+    pub(crate) fn clear_connection_state(&mut self) -> io::Result<()> {
         self.runtime.connection = None;
         let mut saved = self.runtime.saved.clone();
         saved.connected = false;
         self.persist_runtime_state(saved)
     }
 
-    async fn read_state_data(&mut self, request_id: &Value) -> io::Result<Value> {
+    pub(crate) async fn call_automator(
+        &mut self,
+        request_id: &Value,
+        suffix: &str,
+        method: &str,
+        params: Value,
+    ) -> io::Result<Value> {
         let connection = self.runtime.connection.clone().ok_or_else(|| {
             io::Error::new(io::ErrorKind::NotConnected, "automator_not_connected")
         })?;
         let request_tag = request_id.to_string();
-        let current_page = connection
-            .send_with_id(
-                format!("{request_tag}:current_page"),
-                "App.getCurrentPage",
-                json!({}),
-            )
+        connection
+            .send_with_id(format!("{request_tag}:{suffix}"), method, params)
             .await
             .map_err(|error| {
                 let _ = self.clear_connection_state();
                 io::Error::other(error)
-            })?;
+            })
+    }
+
+    async fn read_state_data(&mut self, request_id: &Value) -> io::Result<Value> {
+        let current_page = self
+            .call_automator(request_id, "current_page", "App.getCurrentPage", json!({}))
+            .await?;
         let page_id = current_page
             .get("pageId")
             .cloned()
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "page_id_missing"))?;
-        let data = connection
-            .send_with_id(
-                format!("{request_tag}:page_data"),
+        let data = self
+            .call_automator(
+                request_id,
+                "page_data",
                 "Page.getData",
                 json!({ "pageId": page_id }),
             )
-            .await
-            .map_err(|error| {
-                let _ = self.clear_connection_state();
-                io::Error::other(error)
-            })?;
+            .await?;
 
         Ok(data.get("data").cloned().unwrap_or(Value::Null))
     }
@@ -174,6 +184,21 @@ pub fn dispatch_local_request(state: &ServerState, request: &Value) -> io::Resul
     let id = request.get("id").cloned().unwrap_or(Value::Null);
 
     match method {
+        "health" => Ok(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": crate::handlers::handle_probe("health"),
+        })),
+        "version" => Ok(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": crate::handlers::handle_probe("version"),
+        })),
+        "capabilities" => Ok(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": crate::handlers::handle_probe("capabilities"),
+        })),
         "status" => {
             let effective_connected =
                 state.runtime.connection.is_some() && state.runtime.saved.connected;
@@ -190,6 +215,13 @@ pub fn dispatch_local_request(state: &ServerState, request: &Value) -> io::Resul
                 }
             }))
         }
+        "daemon.stop" => Ok(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {
+                "ok": true,
+            }
+        })),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!("unsupported method: {method}"),
@@ -277,11 +309,87 @@ pub async fn dispatch_request(state: &mut ServerState, request: &Value) -> io::R
                 }
             }))
         }
+        "view" => read_path::handle_view(state, id, &params).await,
+        "find" => read_path::handle_find(state, id, &params).await,
+        "wait" => read_path::handle_wait(state, id, &params).await,
+        "read" => read_path::handle_read(state, id, &params).await,
+        "assert" => read_path::handle_assert(state, id, &params).await,
+        "goto" | "back" | "reload" | "tap" | "type" | "scroll" => {
+            action_path::handle_action(state, id, method, &params).await
+        }
+        "net.start" | "net.stop" | "net.log" | "net.mock" | "net.unmock" | "net.clear"
+        | "net.install-ca" => net_path::handle_net_request(state, id, method, &params).await,
         _ => dispatch_local_request(state, request),
     }
 }
 
+fn write_json_line(stream: &mut UnixStream, value: &Value) -> io::Result<()> {
+    serde_json::to_writer(&mut *stream, value).map_err(io::Error::other)?;
+    stream.write_all(b"\n")?;
+    stream.flush()
+}
+
+fn invalid_request_response(id: Value, message: &str) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": {
+            "code": -32099,
+            "message": message,
+        }
+    })
+}
+
+fn handle_stream(
+    state: &mut ServerState,
+    runtime: &tokio::runtime::Runtime,
+    mut stream: UnixStream,
+) -> io::Result<bool> {
+    let reader_stream = stream.try_clone()?;
+    let mut reader = BufReader::new(reader_stream);
+
+    loop {
+        let mut line = String::new();
+        let bytes = reader.read_line(&mut line)?;
+        if bytes == 0 {
+            return Ok(false);
+        }
+
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let request: Value = match serde_json::from_str(trimmed) {
+            Ok(request) => request,
+            Err(error) => {
+                let response =
+                    invalid_request_response(Value::Null, &format!("invalid_json: {error}"));
+                write_json_line(&mut stream, &response)?;
+                continue;
+            }
+        };
+
+        let should_stop = request
+            .get("method")
+            .and_then(Value::as_str)
+            .is_some_and(|method| method == "daemon.stop");
+
+        let request_id = request.get("id").cloned().unwrap_or(Value::Null);
+        let response: Value = match runtime.block_on(dispatch_request(state, &request)) {
+            Ok(response) => response,
+            Err(error) => invalid_request_response(request_id, &error.to_string()),
+        };
+        write_json_line(&mut stream, &response)?;
+
+        if should_stop {
+            return Ok(true);
+        }
+    }
+}
+
 pub fn serve_forever(state: ServerState) -> io::Result<()> {
+    let mut state = state;
     fs::create_dir_all(&state.paths.root_dir)?;
     fs::create_dir_all(&state.paths.ca_dir)?;
     fs::create_dir_all(&state.paths.log_dir)?;
@@ -299,10 +407,16 @@ pub fn serve_forever(state: ServerState) -> io::Result<()> {
         pid_path: state.paths.rust_pid.clone(),
     };
     let listener = UnixListener::bind(&state.paths.rust_socket)?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(io::Error::other)?;
 
     for incoming in listener.incoming() {
-        let _stream = incoming?;
-        let _ = &state;
+        let stream = incoming?;
+        if handle_stream(&mut state, &runtime, stream)? {
+            break;
+        }
     }
 
     Ok(())

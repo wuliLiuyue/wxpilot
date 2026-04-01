@@ -1,5 +1,7 @@
 use std::sync::{Arc, Mutex};
 
+use rusqlite::{params, Connection, Result};
+
 #[derive(Clone, Debug)]
 pub struct RequestLog {
     pub method: String,
@@ -38,27 +40,63 @@ impl RequestLog {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct StoreWriter {
-    logs: Arc<Mutex<Vec<RequestLog>>>,
+    conn: Arc<Mutex<Connection>>,
 }
 
 impl StoreWriter {
-    pub fn memory() -> Result<Self, &'static str> {
-        Ok(Self::default())
+    pub fn memory() -> Result<Self> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS requests (
+                id INTEGER PRIMARY KEY,
+                method TEXT NOT NULL,
+                url TEXT NOT NULL,
+                req_body TEXT,
+                res_body TEXT
+            );",
+        )?;
+        Ok(Self {
+            conn: Arc::new(Mutex::new(conn)),
+        })
     }
 
-    pub fn insert_request(&self, log: RequestLog) -> Result<(), &'static str> {
-        self.logs.lock().map_err(|_| "lock_error")?.push(log);
+    pub fn insert_request(&self, log: RequestLog) -> Result<()> {
+        let conn = self.conn.lock().expect("store connection lock poisoned");
+        conn.execute(
+            "INSERT INTO requests (method, url, req_body, res_body) VALUES (?1, ?2, ?3, ?4)",
+            params![log.method, log.url, log.req_body, log.res_body],
+        )?;
         Ok(())
     }
 
-    pub fn list_requests(
-        &self,
-        limit: usize,
-        _with_body: bool,
-    ) -> Result<Vec<RequestLog>, &'static str> {
-        let logs = self.logs.lock().map_err(|_| "lock_error")?;
-        Ok(logs.iter().rev().take(limit).cloned().collect())
+    pub fn list_requests(&self, limit: usize, with_body: bool) -> Result<Vec<RequestLog>> {
+        let conn = self.conn.lock().expect("store connection lock poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT method, url, req_body, res_body
+             FROM requests
+             ORDER BY id DESC
+             LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(params![limit as i64], |row| {
+            let req_body = if with_body { row.get(2)? } else { None };
+            let res_body = if with_body { row.get(3)? } else { None };
+
+            Ok(RequestLog {
+                method: row.get(0)?,
+                url: row.get(1)?,
+                req_body,
+                res_body,
+            })
+        })?;
+
+        rows.collect()
+    }
+
+    pub fn clear_requests(&self) -> Result<()> {
+        let conn = self.conn.lock().expect("store connection lock poisoned");
+        conn.execute("DELETE FROM requests", [])?;
+        Ok(())
     }
 }
