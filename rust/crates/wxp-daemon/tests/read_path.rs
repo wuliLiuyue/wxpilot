@@ -236,3 +236,151 @@ async fn state_failure_clears_connected_status_after_socket_closes() {
     let saved: Value = serde_json::from_str(&saved).expect("parse state file");
     assert_eq!(saved["connected"], false);
 }
+
+#[tokio::test]
+async fn view_find_wait_read_and_assert_work_on_snapshot_refs() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+
+    tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.expect("accept");
+        let mut ws = accept_async(stream).await.expect("ws accept");
+        while let Some(message) = ws.next().await {
+            let payload = message.expect("message").into_text().expect("text");
+            let request: Value = serde_json::from_str(&payload).expect("request json");
+            let id = request.get("id").cloned().unwrap_or(Value::Null);
+            let method = request
+                .get("method")
+                .and_then(Value::as_str)
+                .expect("request method");
+
+            let response = match method {
+                "App.getCurrentPage" => {
+                    json!({ "id": id, "result": { "pageId": 1, "path": "pages/index/index", "query": {} } })
+                }
+                "Page.getElement" => {
+                    json!({ "id": id, "result": { "elementId": "root-1" } })
+                }
+                "Element.getWXML" => {
+                    json!({
+                        "id": id,
+                        "result": {
+                            "outerWxml": r#"<page><view class="card"><button class="ConfirmBtn">确定</button><input class="PhoneInput" placeholder="手机号" /></view></page>"#
+                        }
+                    })
+                }
+                _ => json!({ "id": id, "result": {} }),
+            };
+
+            ws.send(Message::Text(response.to_string().into()))
+                .await
+                .expect("send");
+        }
+    });
+
+    let paths = test_paths("snapshot-refs");
+    let mut state = ServerState::new(paths);
+    state
+        .runtime
+        .set_ws_endpoint_for_test(format!("ws://{addr}"));
+
+    dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "connect",
+            "params": {},
+        }),
+    )
+    .await
+    .expect("connect");
+
+    let view = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "view",
+            "params": {},
+        }),
+    )
+    .await
+    .expect("view");
+    assert_eq!(view["result"]["ok"], true);
+    assert_eq!(view["result"]["pagePath"], "pages/index/index");
+    assert!(view["result"]["output"]
+        .as_str()
+        .expect("view output")
+        .contains("%1"));
+
+    let find = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "find",
+            "params": {
+                "query": "confirm"
+            },
+        }),
+    )
+    .await
+    .expect("find");
+    assert_eq!(find["result"]["ok"], true);
+    assert_eq!(find["result"]["pagePath"], "pages/index/index");
+    assert_eq!(find["result"]["matches"][0]["ref"], 1);
+    assert!(find["result"]["output"]
+        .as_str()
+        .expect("find output")
+        .contains("查找: \"confirm\""));
+
+    let wait = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "wait",
+            "params": {
+                "ref": 1
+            },
+        }),
+    )
+    .await
+    .expect("wait");
+    assert_eq!(wait["result"]["ok"], true);
+    assert_eq!(wait["result"]["ref"], 1);
+
+    let read = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "read",
+            "params": {
+                "ref": 1
+            },
+        }),
+    )
+    .await
+    .expect("read");
+    assert_eq!(read["result"]["ok"], true);
+    assert_eq!(read["result"]["text"], "确定");
+
+    let assert_result = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "assert",
+            "params": {
+                "ref": 1,
+                "expected": "确定"
+            },
+        }),
+    )
+    .await
+    .expect("assert");
+    assert_eq!(assert_result["result"]["ok"], true);
+    assert_eq!(assert_result["result"]["actual"], "确定");
+}

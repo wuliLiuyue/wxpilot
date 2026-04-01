@@ -7,12 +7,15 @@ pub struct RefStore {
 }
 
 impl RefStore {
-    pub fn replace_snapshot(&mut self, _page_path: &str, version: u64, refs: Vec<(u32, &str)>) {
+    pub fn replace_snapshot<S>(&mut self, _page_path: &str, version: u64, refs: Vec<(u32, S)>)
+    where
+        S: Into<String>,
+    {
         self.current_version = version;
         self.refs
             .retain(|(existing_version, _), _| *existing_version == version);
         for (ref_id, selector) in refs {
-            self.refs.insert((version, ref_id), selector.to_string());
+            self.refs.insert((version, ref_id), selector.into());
         }
     }
 
