@@ -15,4 +15,17 @@ describe('rust daemon find output', () => {
     expect(output).toContain('查找: "missing"')
     expect(output).toContain('未找到匹配项')
   })
+
+  it('adds truncation suffix when total exceeds shown count', () => {
+    const output = formatFindOutput({
+      pagePath: 'pages/home/index',
+      query: '余额',
+      matches: ['%1 [button].BalanceBtn "余额"'],
+      shownCount: 1,
+      totalCount: 3,
+    })
+
+    expect(output).toContain('查找: "余额" [显示 1/3 条]')
+    expect(output).toContain('%1 [button].BalanceBtn "余额"')
+  })
 })

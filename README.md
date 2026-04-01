@@ -154,9 +154,18 @@ wxpilot daemon restart
 3. `net install-ca` 安装后必须**完全重启**开发者工具才生效
 4. HTTP 模式下 HTTPS 请求透明隧道放行（不记录）；要记录 HTTPS 流量必须用 `--https` 模式
 
-## Rust Daemon Rollout
+## Rust Daemon Native Rollout
 
-1. CLI 默认优先连接 Rust daemon。
-2. Rust probe 失败时自动回退到 TS daemon。
-3. 执行 `pnpm test` 前需确保本机可运行 `cargo test`。
-4. 观察期内用 `wxpilot status` 检查 `daemonKind`。
+1. CLI 默认优先连接 Rust daemon，Rust 启动或探测失败时才回退到 TS daemon。
+2. Rust daemon 与 TS daemon 相互独立，Rust 运行时内部不得桥接到 TS daemon。
+3. 当前已完成的原生闭环包括 `health/version/capabilities/status/start/connect/state/view/find/wait/read/assert`，以及最小 `goto/back/reload/tap/type/scroll/net.*` 路由。
+4. 本地真实回归项目：
+   `/path/to/miniprogram/dist`
+5. 推荐回归命令：
+   - `node packages/cli/dist/index.js status --json`
+   - `node packages/cli/dist/index.js start /path/to/miniprogram/dist --json`
+   - `node packages/cli/dist/index.js connect --json`
+   - `node packages/cli/dist/index.js view --json`
+   - `node packages/cli/dist/index.js find 余额 --all --json`
+   - `node packages/cli/dist/index.js state --json`
+6. 执行 `pnpm test` 前需确保当前 Node 版本与 TS daemon 的 `better-sqlite3` 二进制兼容，否则 Vitest 会在 TS store 测试阶段提前失败。
