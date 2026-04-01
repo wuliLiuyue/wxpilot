@@ -153,3 +153,10 @@ wxpilot daemon restart
 2. 若忘记启动代理就执行了 `wxpilot start`，daemon 会自动检测并启动 HTTP 模式代理后重试
 3. `net install-ca` 安装后必须**完全重启**开发者工具才生效
 4. HTTP 模式下 HTTPS 请求透明隧道放行（不记录）；要记录 HTTPS 流量必须用 `--https` 模式
+
+## Rust Daemon Rollout
+
+1. CLI 默认优先连接 Rust daemon。
+2. Rust probe 失败时自动回退到 TS daemon。
+3. 执行 `pnpm test` 前需确保本机可运行 `cargo test`。
+4. 观察期内用 `wxpilot status` 检查 `daemonKind`。
