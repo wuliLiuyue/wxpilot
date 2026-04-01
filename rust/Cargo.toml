@@ -1,0 +1,14 @@
+[workspace]
+members = [
+  "crates/wxp-common",
+  "crates/wxp-rpc",
+  "crates/wxp-compat",
+  "crates/wxp-daemon",
+  "crates/wxp-automator-protocol",
+  "crates/wxp-automator-client",
+  "crates/wxp-snapshot",
+  "crates/wxp-ref-store",
+  "crates/wxp-proxy",
+  "crates/wxp-store",
+]
+resolver = "2"
