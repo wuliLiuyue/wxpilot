@@ -7,6 +7,14 @@ import { printOk, printErr, printRefExpired, setJsonMode, setVerboseMode } from 
 
 const program = new Command()
 
+type StatusResult = {
+  ok: boolean
+  connected: boolean
+  projectPath: string | null
+  proxy: { port: number } | null
+  daemonKind: 'rust' | 'ts'
+}
+
 program
   .name('wxpilot')
   .description('AI Agent 微信小程序自动化 CLI')
@@ -133,7 +141,9 @@ program
   .command('status')
   .description('查看连接状态')
   .action(async () => {
-    await run('status', {})
+    const result = await callAndReturn('status', {})
+    if (!result) return
+    printOk(result as StatusResult)
   })
 
 // ─── Navigation ────────────────────────────────────────────────────────────
