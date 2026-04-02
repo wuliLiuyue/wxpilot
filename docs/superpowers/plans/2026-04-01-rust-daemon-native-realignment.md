@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 在保留现有 CLI 命令面与 TS fallback 的前提下，把 Rust daemon 拉回技术方案规定的“原生实现”路线，并补齐首个可回归的 Rust 读路径闭环。
+**Goal:** 在保留现有 CLI 命令面与可显式选择 Rust/TS daemon 的前提下，把 Rust daemon 拉回技术方案规定的“原生实现”路线，并补齐首个可回归的 Rust 读路径闭环。
 
-**Architecture:** 当前仓库已经完成契约冻结、CLI fallback 和 Rust workspace 骨架，但 Rust 业务层仍是 stub。后续实现必须坚持单-daemon模型：Rust daemon 只能依赖 Rust runtime、Rust automator client、Rust snapshot/ref/proxy/store，CLI 负责“先起 Rust，失败再起 TS”，Rust 运行时内部禁止再出现 `TS daemon` socket、进程拉起或桥接转发。
+**Architecture:** 当前仓库已经完成契约冻结、CLI daemon 选择逻辑和 Rust workspace 骨架，但 Rust 业务层仍是 stub。后续实现必须坚持单-daemon模型：Rust daemon 只能依赖 Rust runtime、Rust automator client、Rust snapshot/ref/proxy/store，CLI 负责连接并拉起显式指定的 daemon，Rust 运行时内部禁止再出现 `TS daemon` socket、进程拉起或桥接转发。
 
 **Tech Stack:** TypeScript CLI, Rust workspace, Tokio, tokio-tungstenite, Serde, rusqlite, tracing, html parser (`tl`)
 
@@ -16,7 +16,7 @@
 
 - `pnpm test` 通过
 - `pnpm lint` 通过
-- `docs/contracts/*`、`tests/contracts/*`、CLI fallback、Rust workspace 骨架已存在
+- `docs/contracts/*`、`tests/contracts/*`、CLI daemon 选择逻辑、Rust workspace 骨架已存在
 - 错误的 `Rust -> TS daemon` bridge 已移除，`rust/crates/wxp-daemon/src/server.rs` 现在回到空骨架
 
 以下内容明确禁止重新引入：
@@ -27,7 +27,7 @@
 
 ## Scope
 
-这份计划只覆盖“未完成且必须按技术方案原生实现”的部分，不重做已完成的契约冻结和 CLI fallback：
+这份计划只覆盖“未完成且必须按技术方案原生实现”的部分，不重做已完成的契约冻结和 CLI daemon 选择逻辑：
 
 1. Rust native runtime + state store + probe/status
 2. Rust native devtools launcher

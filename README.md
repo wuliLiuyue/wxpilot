@@ -156,7 +156,7 @@ wxpilot daemon restart
 
 ## Rust Daemon Native Rollout
 
-1. CLI 默认优先连接 Rust daemon，Rust 启动或探测失败时才回退到 TS daemon。
+1. CLI 默认连接 Rust daemon；仅当用户显式指定 `--daemon-kind ts` 时才连接 TS daemon，不再自动回退。
 2. Rust daemon 与 TS daemon 相互独立，Rust 运行时内部不得桥接到 TS daemon。
 3. 当前已完成的原生闭环包括 `health/version/capabilities/status/start/connect/state/view/find/wait/read/assert`，以及最小 `goto/back/reload/tap/type/scroll/net.*` 路由。
 4. 本地真实回归项目：

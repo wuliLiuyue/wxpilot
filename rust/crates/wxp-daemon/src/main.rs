@@ -1,5 +1,5 @@
 use wxp_daemon::bootstrap_guard::{run_bootstrap_guard, AllowAllBootstrapGuard};
-use wxp_daemon::server::{serve_forever, ServerState};
+use wxp_daemon::server::{serve_forever, RuntimePaths, ServerState};
 
 fn main() {
     let decision = run_bootstrap_guard(&AllowAllBootstrapGuard);
@@ -14,7 +14,15 @@ fn main() {
         std::process::exit(1);
     }
 
-    if let Err(error) = serve_forever(ServerState::default()) {
+    let state = match ServerState::new(RuntimePaths::default()) {
+        Ok(state) => state,
+        Err(error) => {
+            eprintln!("rust daemon init error: {error}");
+            std::process::exit(1);
+        }
+    };
+
+    if let Err(error) = serve_forever(state) {
         eprintln!("rust daemon error: {error}");
         std::process::exit(1);
     }

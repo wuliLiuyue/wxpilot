@@ -34,7 +34,7 @@ fn test_paths(name: &str) -> RuntimePaths {
 }
 
 #[tokio::test]
-async fn start_connect_status_and_state_work_on_rust_daemon() {
+async fn start_connect_status_and_state_supports_summary_path_and_full_contract() {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let addr = listener.local_addr().expect("addr");
 
@@ -55,7 +55,18 @@ async fn start_connect_status_and_state_work_on_rust_daemon() {
                     json!({ "id": id, "result": { "pageId": 1, "path": "pages/index/index", "query": {} } })
                 }
                 "Page.getData" => {
-                    json!({ "id": id, "result": { "data": { "title": "首页", "count": 3 } } })
+                    json!({
+                        "id": id,
+                        "result": {
+                            "data": {
+                                "title": "首页标题",
+                                "count": 3,
+                                "cardMap": {
+                                    "vipCardPrice": "1,234,367.73"
+                                }
+                            }
+                        }
+                    })
                 }
                 _ => json!({ "id": id, "result": {} }),
             };
@@ -67,7 +78,7 @@ async fn start_connect_status_and_state_work_on_rust_daemon() {
     });
 
     let paths = test_paths("mainline");
-    let mut state = ServerState::new(paths.clone());
+    let mut state = ServerState::new(paths.clone()).expect("server state");
     state.launcher = DevtoolsLauncher::new(vec![]).with_run_auto_hook(move |request| {
         assert_eq!(request.project_path, "/tmp/project");
         assert_eq!(request.port, 9420);
@@ -137,20 +148,129 @@ async fn start_connect_status_and_state_work_on_rust_daemon() {
         serde_json::from_str(&saved_after_connect).expect("parse state after connect");
     assert_eq!(saved_after_connect["connected"], true);
 
-    let state_result = dispatch_request(
+    let state_summary = dispatch_request(
         &mut state,
         &json!({
             "jsonrpc": "2.0",
             "id": 4,
             "method": "state",
+            "params": {},
+        }),
+    )
+    .await
+    .expect("state summary");
+    assert_eq!(state_summary["result"]["ok"], true);
+    assert_eq!(state_summary["result"]["summary"]["title"], "string(6)");
+    assert_eq!(state_summary["result"]["summary"]["count"], "number(1)");
+    assert_eq!(state_summary["result"]["summary"]["cardMap"], "object(31)");
+    assert_eq!(
+        state_summary["result"]["hint"],
+        "use --full or specify a path to get full data"
+    );
+    assert!(state_summary["result"].get("data").is_none());
+
+    let state_path = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "state",
+            "params": { "path": "cardMap.vipCardPrice" },
+        }),
+    )
+    .await
+    .expect("state path");
+    assert_eq!(state_path["result"]["ok"], true);
+    assert_eq!(state_path["result"]["data"], "1,234,367.73");
+
+    let state_full = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "state",
             "params": { "full": true },
         }),
     )
     .await
+    .expect("state full");
+    assert_eq!(state_full["result"]["ok"], true);
+    assert_eq!(state_full["result"]["data"]["title"], "首页标题");
+    assert_eq!(state_full["result"]["data"]["count"], 3);
+}
+
+#[tokio::test]
+async fn state_defaults_to_data_when_top_level_is_not_object() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+
+    tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.expect("accept");
+        let mut ws = accept_async(stream).await.expect("ws accept");
+        while let Some(message) = ws.next().await {
+            let payload = message.expect("message").into_text().expect("text");
+            let request: Value = serde_json::from_str(&payload).expect("request json");
+            let id = request.get("id").cloned().unwrap_or(Value::Null);
+            let method = request
+                .get("method")
+                .and_then(Value::as_str)
+                .expect("request method");
+
+            let response = match method {
+                "App.getCurrentPage" => {
+                    json!({ "id": id, "result": { "pageId": 1, "path": "pages/index/index", "query": {} } })
+                }
+                "Page.getData" => {
+                    json!({
+                        "id": id,
+                        "result": {
+                            "data": "ready"
+                        }
+                    })
+                }
+                _ => json!({ "id": id, "result": {} }),
+            };
+
+            ws.send(Message::Text(response.to_string().into()))
+                .await
+                .expect("send");
+        }
+    });
+
+    let paths = test_paths("state-non-object");
+    let mut state = ServerState::new(paths).expect("server state");
+    state
+        .runtime
+        .set_ws_endpoint_for_test(format!("ws://{addr}"));
+
+    dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "connect",
+            "params": {},
+        }),
+    )
+    .await
+    .expect("connect");
+
+    let state_result = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "state",
+            "params": {},
+        }),
+    )
+    .await
     .expect("state");
+
     assert_eq!(state_result["result"]["ok"], true);
-    assert_eq!(state_result["result"]["data"]["title"], "首页");
-    assert_eq!(state_result["result"]["data"]["count"], 3);
+    assert_eq!(state_result["result"]["data"], "ready");
+    assert!(state_result["result"].get("summary").is_none());
+    assert!(state_result["result"].get("hint").is_none());
 }
 
 #[tokio::test]
@@ -164,7 +284,7 @@ async fn start_retries_with_proxy_after_failed_to_fetch_error() {
     let attempts_for_hook = attempts.clone();
 
     let paths = test_paths("start-proxy-retry");
-    let mut state = ServerState::new(paths);
+    let mut state = ServerState::new(paths).expect("server state");
     state.default_proxy_port = 0;
     state.launcher = DevtoolsLauncher::new(vec![]).with_run_auto_hook(move |_request| {
         let attempt = attempts_for_hook.fetch_add(1, Ordering::SeqCst);
@@ -209,7 +329,7 @@ fn status_does_not_report_connected_after_restart_without_live_connection() {
     )
     .expect("write state file");
 
-    let state = ServerState::new(paths);
+    let state = ServerState::new(paths).expect("server state");
     let status = dispatch_local_request(
         &state,
         &json!({
@@ -252,7 +372,7 @@ async fn state_failure_clears_connected_status_after_socket_closes() {
     });
 
     let paths = test_paths("disconnect-status");
-    let mut state = ServerState::new(paths.clone());
+    let mut state = ServerState::new(paths.clone()).expect("server state");
     state
         .runtime
         .set_ws_endpoint_for_test(format!("ws://{addr}"));
@@ -330,7 +450,7 @@ async fn connect_retries_until_websocket_becomes_available() {
     });
 
     let paths = test_paths("connect-retry");
-    let mut state = ServerState::new(paths.clone());
+    let mut state = ServerState::new(paths.clone()).expect("server state");
     state
         .runtime
         .set_ws_endpoint_for_test(format!("ws://{addr}"));
@@ -402,7 +522,7 @@ async fn connect_waits_until_current_page_probe_succeeds() {
     });
 
     let paths = test_paths("connect-probe");
-    let mut state = ServerState::new(paths);
+    let mut state = ServerState::new(paths).expect("server state");
     state
         .runtime
         .set_ws_endpoint_for_test(format!("ws://{addr}"));
@@ -476,7 +596,7 @@ async fn view_find_wait_read_and_assert_work_on_snapshot_refs() {
     });
 
     let paths = test_paths("snapshot-refs");
-    let mut state = ServerState::new(paths);
+    let mut state = ServerState::new(paths).expect("server state");
     state
         .runtime
         .set_ws_endpoint_for_test(format!("ws://{addr}"));

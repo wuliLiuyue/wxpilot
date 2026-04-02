@@ -32,7 +32,7 @@ fn test_paths(name: &str) -> RuntimePaths {
 
 #[tokio::test]
 async fn net_mock_log_and_clear_requests_work() {
-    let mut state = ServerState::new(test_paths("net"));
+    let mut state = ServerState::new(test_paths("net")).expect("server state");
     let oversized = "x".repeat(2100);
     state
         .runtime
@@ -142,7 +142,7 @@ async fn net_mock_log_and_clear_requests_work() {
 
 #[tokio::test]
 async fn net_start_and_stop_manage_proxy_runtime() {
-    let mut state = ServerState::new(test_paths("net-start-stop"));
+    let mut state = ServerState::new(test_paths("net-start-stop")).expect("server state");
 
     let started = dispatch_request(
         &mut state,
