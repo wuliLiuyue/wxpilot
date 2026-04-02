@@ -8,7 +8,7 @@
     "build": "pnpm -r build && cd rust && cargo build",
     "dev": "pnpm -r --parallel dev",
     "test": "vitest run && cd rust && cargo test",
-    "lint": "tsc --noEmit -p packages/cli/tsconfig.json && tsc --noEmit -p packages/daemon/tsconfig.json && cd rust && cargo fmt -- --check"
+    "lint": "tsc --noEmit -p packages/cli/tsconfig.json && tsc --noEmit -p packages/daemon/tsconfig.json && tsc --noEmit -p packages/contracts/tsconfig.json && cd rust && cargo fmt -- --check"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
