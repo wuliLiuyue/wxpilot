@@ -16,7 +16,7 @@
 
 - `pnpm test` 通过
 - `pnpm lint` 通过
-- `docs/contracts/*`、`tests/contracts/*`、CLI daemon 选择逻辑、Rust workspace 骨架已存在
+- `packages/contracts/docs/*`、`packages/contracts/tests/*`、CLI daemon 选择逻辑、Rust workspace 骨架已存在
 - 错误的 `Rust -> TS daemon` bridge 已移除，`rust/crates/wxp-daemon/src/server.rs` 现在回到空骨架
 
 以下内容明确禁止重新引入：
@@ -69,10 +69,10 @@
 
 ### Existing contract tests to keep green
 
-- Keep: `tests/contracts/daemon-contract.spec.ts`
-- Keep: `tests/contracts/cli-fallback.spec.ts`
-- Keep: `tests/contracts/find-output.spec.ts`
-- Keep: `tests/contracts/cross-implementation.spec.ts`
+- Keep: `packages/contracts/tests/daemon-contract.spec.ts`
+- Keep: `packages/contracts/tests/cli-fallback.spec.ts`
+- Keep: `packages/contracts/tests/find-output.spec.ts`
+- Keep: `packages/contracts/tests/cross-implementation.spec.ts`
 
 ## Task 1: 建立单-daemon runtime 与持久状态
 
@@ -1236,15 +1236,15 @@ git commit -m "feat: add rust native proxy and store"
 
 **Files:**
 - Modify: `README.md`
-- Modify: `docs/automator/protocol-manifest.md`
-- Modify: `tests/contracts/cross-implementation.spec.ts`
-- Modify: `tests/contracts/find-output.spec.ts`
+- Modify: `packages/contracts/docs/automator-protocol-manifest.md`
+- Modify: `packages/contracts/tests/cross-implementation.spec.ts`
+- Modify: `packages/contracts/tests/find-output.spec.ts`
 
 - [ ] **Step 1: 写失败中的 cross-implementation 回归测试**
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { daemonContract } from '../../packages/daemon/src/__fixtures__/rpc-contract.js'
+import { daemonContract } from '../packages/contracts/src/daemon-contract.js'
 
 describe('cross implementation contract suite', () => {
   it('keeps rust daemon public method list aligned with frozen contract', () => {
@@ -1258,7 +1258,7 @@ describe('cross implementation contract suite', () => {
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `pnpm vitest run tests/contracts/cross-implementation.spec.ts`
+Run: `pnpm vitest run packages/contracts/tests/cross-implementation.spec.ts`
 
 Expected: FAIL，直到 Rust daemon 的真实回归输出补齐
 
@@ -1326,7 +1326,7 @@ Expected: 返回 `summary` 或 `data`
 - [ ] **Step 5: 提交**
 
 ```bash
-git add README.md docs/automator/protocol-manifest.md tests/contracts/cross-implementation.spec.ts tests/contracts/find-output.spec.ts
+git add README.md packages/contracts/docs/automator-protocol-manifest.md packages/contracts/tests/cross-implementation.spec.ts packages/contracts/tests/find-output.spec.ts
 git commit -m "chore: document rust native rollout regression"
 ```
 

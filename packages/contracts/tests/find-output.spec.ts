@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatFindOutput } from '../../rust-bindings/find-output.js'
+import { formatFindOutput } from '../src/find-output.js'
 
 describe('rust daemon find output', () => {
   it('matches ts header and empty result text', () => {
