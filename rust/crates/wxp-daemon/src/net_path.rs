@@ -76,7 +76,29 @@ pub async fn handle_net_request(
                 .map_err(io::Error::other)?;
             Ok(ok_result(id, json!({ "ok": true })))
         }
-        "net.start" | "net.stop" | "net.install-ca" => Ok(ok_result(id, json!({ "ok": true }))),
+        "net.start" => {
+            let port = params
+                .get("port")
+                .and_then(Value::as_u64)
+                .map(u16::try_from)
+                .transpose()
+                .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "port_out_of_range"))?
+                .unwrap_or(state.default_proxy_port);
+            let https = params
+                .get("https")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let bound_port = state.runtime.proxy.start(port)?;
+            Ok(ok_result(
+                id,
+                json!({ "ok": true, "port": bound_port, "https": https }),
+            ))
+        }
+        "net.stop" => {
+            state.runtime.proxy.stop()?;
+            Ok(ok_result(id, json!({ "ok": true })))
+        }
+        "net.install-ca" => Ok(ok_result(id, json!({ "ok": true }))),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!("unsupported net method: {method}"),

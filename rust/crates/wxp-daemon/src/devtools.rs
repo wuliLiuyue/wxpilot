@@ -125,7 +125,7 @@ impl DevtoolsLauncher {
             String::from_utf8_lossy(&stderr),
         );
 
-        if status.success() {
+        if status.success() && cli_output_indicates_success(&merged_output) {
             return Ok(format!("ws://127.0.0.1:{}", request.port));
         }
 
@@ -232,6 +232,10 @@ impl fmt::Debug for DevtoolsLauncher {
             .field("has_run_auto_hook", &self.run_auto_hook.is_some())
             .finish()
     }
+}
+
+fn cli_output_indicates_success(output: &str) -> bool {
+    output.contains("✔ auto") || output.contains("自动化已开启") || output.contains("auto success")
 }
 
 fn read_pipe<R: Read>(mut reader: R) -> io::Result<Vec<u8>> {

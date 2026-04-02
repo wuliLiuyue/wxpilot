@@ -139,3 +139,42 @@ async fn net_mock_log_and_clear_requests_work() {
         0
     );
 }
+
+#[tokio::test]
+async fn net_start_and_stop_manage_proxy_runtime() {
+    let mut state = ServerState::new(test_paths("net-start-stop"));
+
+    let started = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 10,
+            "method": "net.start",
+            "params": {
+                "port": 0
+            },
+        }),
+    )
+    .await
+    .expect("net start");
+    assert_eq!(started["result"]["ok"], true);
+    assert!(
+        started["result"]["port"].as_u64().expect("proxy port") > 0,
+        "net.start should report bound proxy port"
+    );
+    assert!(state.runtime.proxy.is_running());
+
+    let stopped = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "net.stop",
+            "params": {},
+        }),
+    )
+    .await
+    .expect("net stop");
+    assert_eq!(stopped["result"]["ok"], true);
+    assert!(!state.runtime.proxy.is_running());
+}
