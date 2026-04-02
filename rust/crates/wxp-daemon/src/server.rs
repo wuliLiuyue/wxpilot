@@ -4,9 +4,11 @@ use std::{
     os::unix::net::{UnixListener, UnixStream},
     path::{Path, PathBuf},
     process,
+    time::Duration,
 };
 
 use serde_json::{json, Value};
+use tokio::time::sleep;
 
 use crate::{
     action_path,
@@ -55,6 +57,7 @@ impl Default for RuntimePaths {
 pub struct ServerState {
     pub daemon_kind: &'static str,
     pub paths: RuntimePaths,
+    pub default_proxy_port: u16,
     pub store: StateStore,
     pub launcher: DevtoolsLauncher,
     pub runtime: DaemonRuntime,
@@ -71,6 +74,7 @@ impl ServerState {
         Self {
             daemon_kind: wxp_common::DAEMON_KIND,
             paths,
+            default_proxy_port: 8899,
             launcher: DevtoolsLauncher::new(DevtoolsLauncher::default_candidates()),
             runtime: DaemonRuntime::new(saved),
             store,
@@ -203,6 +207,12 @@ pub fn dispatch_local_request(state: &ServerState, request: &Value) -> io::Resul
             let effective_connected =
                 state.runtime.connection.is_some() && state.runtime.saved.connected;
             let saved = &state.runtime.saved;
+            let proxy = state
+                .runtime
+                .proxy
+                .port()
+                .map(|port| json!({ "port": port }))
+                .unwrap_or(Value::Null);
             Ok(json!({
                 "jsonrpc": "2.0",
                 "id": id,
@@ -210,7 +220,7 @@ pub fn dispatch_local_request(state: &ServerState, request: &Value) -> io::Resul
                     "ok": true,
                     "connected": effective_connected,
                     "projectPath": saved.project_path.clone(),
-                    "proxy": Value::Null,
+                    "proxy": proxy,
                     "daemonKind": state.daemon_kind,
                 }
             }))
@@ -252,12 +262,17 @@ pub async fn dispatch_request(state: &mut ServerState, request: &Value) -> io::R
                 .transpose()
                 .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "port_out_of_range"))?
                 .unwrap_or(9420);
-            let endpoint = state.launcher.run_auto(
-                &project_path,
-                port,
-                None,
-                params.get("appid").and_then(Value::as_str),
-            )?;
+            let appid = params.get("appid").and_then(Value::as_str);
+            let endpoint = match state.launcher.run_auto(&project_path, port, None, appid) {
+                Ok(endpoint) => endpoint,
+                Err(error)
+                    if is_proxy_error(&error.to_string()) && !state.runtime.proxy.is_running() =>
+                {
+                    state.runtime.proxy.start(state.default_proxy_port)?;
+                    state.launcher.run_auto(&project_path, port, None, appid)?
+                }
+                Err(error) => return Err(error),
+            };
 
             let mut next_saved = state.runtime.saved.clone();
             next_saved.project_path = Some(project_path);
@@ -281,9 +296,28 @@ pub async fn dispatch_request(state: &mut ServerState, request: &Value) -> io::R
                 state.runtime.saved.ws_endpoint.clone().ok_or_else(|| {
                     io::Error::new(io::ErrorKind::NotFound, "ws_endpoint_missing")
                 })?;
-            let connection = wxp_automator_client::AutomatorConnection::connect(&endpoint)
-                .await
-                .map_err(io::Error::other)?;
+            let mut last_error = None;
+            let mut connection = None;
+            for attempt in 0..5 {
+                if attempt > 0 {
+                    sleep(Duration::from_secs(2)).await;
+                }
+                match wxp_automator_client::AutomatorConnection::connect(&endpoint).await {
+                    Ok(next) => {
+                        connection = Some(next);
+                        break;
+                    }
+                    Err(error) => last_error = Some(error),
+                }
+            }
+            let connection = connection.ok_or_else(|| {
+                io::Error::other(
+                    last_error
+                        .map(|error| error.to_string())
+                        .unwrap_or_else(|| "connect failed".to_string()),
+                )
+            })?;
+            wait_for_current_page_ready(&connection).await?;
             let mut next_saved = state.runtime.saved.clone();
             next_saved.connected = true;
             state.persist_runtime_state(next_saved)?;
@@ -338,6 +372,41 @@ fn invalid_request_response(id: Value, message: &str) -> Value {
             "message": message,
         }
     })
+}
+
+fn is_proxy_error(message: &str) -> bool {
+    message.contains("8899")
+        || message.contains("tunneling socket")
+        || message.contains("TLS connection")
+        || message.contains("ECONNRESET")
+        || message.contains("Failed to fetch")
+}
+
+async fn wait_for_current_page_ready(
+    connection: &wxp_automator_client::AutomatorConnection,
+) -> io::Result<()> {
+    let mut last_error = None;
+    for attempt in 0..5 {
+        if attempt > 0 {
+            sleep(Duration::from_secs(2)).await;
+        }
+
+        match connection
+            .send_with_id(
+                format!("connect_probe:{attempt}"),
+                "App.getCurrentPage",
+                json!({}),
+            )
+            .await
+        {
+            Ok(_) => return Ok(()),
+            Err(error) => last_error = Some(error.to_string()),
+        }
+    }
+
+    Err(io::Error::other(
+        last_error.unwrap_or_else(|| "current_page_probe_failed".to_string()),
+    ))
 }
 
 fn handle_stream(

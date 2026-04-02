@@ -165,13 +165,22 @@ fn default_runtime_paths_match_cli_probe_locations() {
     let home = std::env::var("HOME").expect("home env");
     let paths = RuntimePaths::default();
 
-    assert_eq!(paths.rust_socket, PathBuf::from(&home).join(".wxpilot/rust-daemon.sock"));
-    assert_eq!(paths.rust_pid, PathBuf::from(&home).join(".wxpilot/rust-daemon.pid"));
+    assert_eq!(
+        paths.rust_socket,
+        PathBuf::from(&home).join(".wxpilot/rust-daemon.sock")
+    );
+    assert_eq!(
+        paths.rust_pid,
+        PathBuf::from(&home).join(".wxpilot/rust-daemon.pid")
+    );
     assert_eq!(
         paths.state_file,
         PathBuf::from(&home).join(".wxpilot/rust-daemon-state.json")
     );
-    assert_eq!(paths.db_file, PathBuf::from(&home).join(".wxpilot/rust-daemon.db"));
+    assert_eq!(
+        paths.db_file,
+        PathBuf::from(&home).join(".wxpilot/rust-daemon.db")
+    );
 }
 
 #[test]

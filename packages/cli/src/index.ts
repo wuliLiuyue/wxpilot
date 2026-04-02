@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import readline from 'readline'
 import { Command } from 'commander'
-import { call } from './client.js'
+import { call, setPreferredDaemonKind, stopDaemon, type DaemonKind } from './client.js'
 import { printOk, printErr, printRefExpired, setJsonMode, setVerboseMode } from './output.js'
 
 const program = new Command()
@@ -19,11 +19,18 @@ program
   .name('wxpilot')
   .description('AI Agent 微信小程序自动化 CLI')
   .version('0.1.0')
+  .option('--daemon-kind <kind>', '选择 daemon 类型（rust|ts）', 'rust')
   .option('--timeout <ms>', '操作超时（毫秒）', '10000')
   .option('--verbose', '详细日志')
   .option('--json', '输出 JSON 格式')
   .hook('preAction', (thisCommand) => {
     const opts = thisCommand.opts()
+    const daemonKind = opts['daemonKind']
+    if (daemonKind !== 'rust' && daemonKind !== 'ts') {
+      printErr(`invalid daemon kind: ${daemonKind}`)
+      process.exit(1)
+    }
+    setPreferredDaemonKind(daemonKind as DaemonKind)
     setJsonMode(!!opts['json'])
     setVerboseMode(!!opts['verbose'])
   })
@@ -386,16 +393,23 @@ daemon
   .command('stop')
   .description('停止 daemon')
   .action(async () => {
-    await run('daemon.stop', {})
+    const daemonKind = program.opts()['daemonKind'] as DaemonKind
+    try {
+      const result = await stopDaemon(daemonKind)
+      printOk({ ok: true, daemonKind, ...result })
+    } catch (e: unknown) {
+      const err = e as Error
+      printErr(err.message)
+      process.exit(1)
+    }
   })
 
 daemon
   .command('restart')
   .description('重启 daemon')
   .action(async () => {
-    try {
-      await call('daemon.stop', {}, 5000)
-    } catch { /* ignore */ }
+    const daemonKind = program.opts()['daemonKind'] as DaemonKind
+    try { await stopDaemon(daemonKind) } catch { /* ignore */ }
     // wait for daemon to stop, then reconnect (auto-spawn)
     await new Promise((r) => setTimeout(r, 1500))
     await run('status', {})

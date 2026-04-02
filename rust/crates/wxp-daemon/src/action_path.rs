@@ -3,7 +3,10 @@ use std::io;
 use serde_json::{json, Value};
 use wxp_automator_client::normalize_input_call;
 
-use crate::{handlers::normalize_route_action, server::ServerState};
+use crate::{
+    handlers::{element_request_params, normalize_route_action},
+    server::ServerState,
+};
 
 pub async fn handle_action(
     state: &mut ServerState,
@@ -87,14 +90,9 @@ async fn reload(state: &mut ServerState, id: Value) -> io::Result<Value> {
 
 async fn tap(state: &mut ServerState, id: Value, params: &Value) -> io::Result<Value> {
     let ref_id = parse_ref(params)?;
-    let element_id = resolve_element_id(state, &id, ref_id).await?;
+    let element = resolve_element_request(state, &id, ref_id).await?;
     state
-        .call_automator(
-            &id,
-            "tap",
-            "Element.tap",
-            json!({ "elementId": element_id }),
-        )
+        .call_automator(&id, "tap", "Element.tap", Value::Object(element.clone()))
         .await?;
 
     Ok(ok_result(
@@ -110,7 +108,7 @@ async fn type_text(state: &mut ServerState, id: Value, params: &Value) -> io::Re
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
-    let element_id = resolve_element_id(state, &id, ref_id).await?;
+    let mut element = resolve_element_request(state, &id, ref_id).await?;
     let call_name = state
         .runtime
         .snapshot_refs
@@ -129,17 +127,10 @@ async fn type_text(state: &mut ServerState, id: Value, params: &Value) -> io::Re
             )
         })
         .unwrap_or("input.input");
+    element.insert("name".into(), Value::String(call_name.to_string()));
+    element.insert("args".into(), json!({ "value": text }));
     state
-        .call_automator(
-            &id,
-            "type",
-            "Element.callFunction",
-            json!({
-                "elementId": element_id,
-                "name": call_name,
-                "args": { "value": text },
-            }),
-        )
+        .call_automator(&id, "type", "Element.callFunction", Value::Object(element))
         .await?;
 
     Ok(ok_result(
@@ -154,17 +145,18 @@ async fn scroll(state: &mut ServerState, id: Value, params: &Value) -> io::Resul
         .get("direction")
         .and_then(Value::as_str)
         .unwrap_or("down");
-    let element_id = resolve_element_id(state, &id, ref_id).await?;
+    let mut element = resolve_element_request(state, &id, ref_id).await?;
+    element.insert(
+        "name".into(),
+        Value::String("scroll-view.scrollTo".to_string()),
+    );
+    element.insert("args".into(), json!({ "direction": direction }));
     state
         .call_automator(
             &id,
             "scroll",
             "Element.callFunction",
-            json!({
-                "elementId": element_id,
-                "name": "scroll-view.scrollTo",
-                "args": { "direction": direction },
-            }),
+            Value::Object(element),
         )
         .await?;
 
@@ -174,11 +166,11 @@ async fn scroll(state: &mut ServerState, id: Value, params: &Value) -> io::Resul
     ))
 }
 
-async fn resolve_element_id(
+async fn resolve_element_request(
     state: &mut ServerState,
     request_id: &Value,
     ref_id: u32,
-) -> io::Result<Value> {
+) -> io::Result<serde_json::Map<String, Value>> {
     let selector = state.runtime.resolve_ref_selector(ref_id).ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidInput, format!("ref_expired:{ref_id}"))
     })?;
@@ -199,10 +191,7 @@ async fn resolve_element_id(
         )
         .await?;
 
-    element
-        .get("elementId")
-        .cloned()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "element_id_missing"))
+    element_request_params(page_id, &element)
 }
 
 async fn current_page(state: &mut ServerState, request_id: &Value) -> io::Result<Value> {

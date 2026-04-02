@@ -7,7 +7,10 @@ use serde_json::{json, Value};
 use tokio::time::sleep;
 use wxp_snapshot::{find_nodes, parse_wxml, render_find_matches, render_tree, FindMatch};
 
-use crate::{handlers::format_find_output, server::ServerState};
+use crate::{
+    handlers::{element_request_params, format_find_output},
+    server::ServerState,
+};
 
 pub async fn handle_view(state: &mut ServerState, id: Value, params: &Value) -> io::Result<Value> {
     let full = params.get("full").and_then(Value::as_bool).unwrap_or(false);
@@ -264,21 +267,20 @@ async fn build_snapshot(
             }),
         )
         .await?;
-    let element_id = root_element
-        .get("elementId")
-        .cloned()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "element_id_missing"))?;
+    let mut wxml_params = element_request_params(page_id, &root_element)?;
+    wxml_params.insert("type".into(), Value::String("outer".to_string()));
     let wxml = state
         .call_automator(
             request_id,
             "outer_wxml",
             "Element.getWXML",
-            json!({ "elementId": element_id }),
+            Value::Object(wxml_params),
         )
         .await?;
     let outer_wxml = wxml
-        .get("outerWxml")
+        .get("wxml")
         .and_then(Value::as_str)
+        .or_else(|| wxml.get("outerWxml").and_then(Value::as_str))
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "outer_wxml_missing"))?;
 
     Ok(SnapshotPayload {
