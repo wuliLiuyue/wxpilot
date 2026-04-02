@@ -1,7 +1,7 @@
 use std::{
     fs,
     path::PathBuf,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use futures_util::{SinkExt, StreamExt};
@@ -153,6 +153,53 @@ async fn start_connect_status_and_state_work_on_rust_daemon() {
     assert_eq!(state_result["result"]["data"]["count"], 3);
 }
 
+#[tokio::test]
+async fn start_retries_with_proxy_after_failed_to_fetch_error() {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let attempts_for_hook = attempts.clone();
+
+    let paths = test_paths("start-proxy-retry");
+    let mut state = ServerState::new(paths);
+    state.default_proxy_port = 0;
+    state.launcher = DevtoolsLauncher::new(vec![]).with_run_auto_hook(move |_request| {
+        let attempt = attempts_for_hook.fetch_add(1, Ordering::SeqCst);
+        if attempt == 0 {
+            return Err(std::io::Error::other(
+                "cli auto failed: Error: Failed to fetch via proxy 8899",
+            ));
+        }
+        Ok("ws://127.0.0.1:9420".to_string())
+    });
+
+    let start = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 40,
+            "method": "start",
+            "params": {
+                "projectPath": "/tmp/project",
+                "port": 9420
+            },
+        }),
+    )
+    .await
+    .expect("start should retry after starting proxy");
+
+    assert_eq!(start["result"]["ok"], true);
+    assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    assert!(state.runtime.proxy.is_running());
+    assert!(
+        state.runtime.proxy.port().expect("proxy port") > 0,
+        "proxy retry should bind a runtime port"
+    );
+}
+
 #[test]
 fn status_does_not_report_connected_after_restart_without_live_connection() {
     let paths = test_paths("restart-status");
@@ -185,7 +232,23 @@ async fn state_failure_clears_connected_status_after_socket_closes() {
 
     tokio::spawn(async move {
         let (stream, _) = listener.accept().await.expect("accept");
-        let _ws = accept_async(stream).await.expect("ws accept");
+        let mut ws = accept_async(stream).await.expect("ws accept");
+        if let Some(message) = ws.next().await {
+            let payload = message.expect("message").into_text().expect("text");
+            let request: Value = serde_json::from_str(&payload).expect("request json");
+            let id = request.get("id").cloned().unwrap_or(Value::Null);
+            assert_eq!(request["method"], "App.getCurrentPage");
+            ws.send(Message::Text(
+                json!({
+                    "id": id,
+                    "result": { "pageId": 1, "path": "pages/index/index", "query": {} }
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .expect("send");
+        }
     });
 
     let paths = test_paths("disconnect-status");
@@ -238,6 +301,132 @@ async fn state_failure_clears_connected_status_after_socket_closes() {
 }
 
 #[tokio::test]
+async fn connect_retries_until_websocket_becomes_available() {
+    let reserved = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = reserved.local_addr().expect("addr");
+    drop(reserved);
+
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        let listener = TcpListener::bind(addr).await.expect("rebind");
+        let (stream, _) = listener.accept().await.expect("accept");
+        let mut ws = accept_async(stream).await.expect("ws accept");
+        if let Some(message) = ws.next().await {
+            let payload = message.expect("message").into_text().expect("text");
+            let request: Value = serde_json::from_str(&payload).expect("request json");
+            let id = request.get("id").cloned().unwrap_or(Value::Null);
+            assert_eq!(request["method"], "App.getCurrentPage");
+            ws.send(Message::Text(
+                json!({
+                    "id": id,
+                    "result": { "pageId": 1, "path": "pages/index/index", "query": {} }
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .expect("send");
+        }
+    });
+
+    let paths = test_paths("connect-retry");
+    let mut state = ServerState::new(paths.clone());
+    state
+        .runtime
+        .set_ws_endpoint_for_test(format!("ws://{addr}"));
+
+    let connect = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "connect",
+            "params": {},
+        }),
+    )
+    .await
+    .expect("connect should retry until websocket is ready");
+
+    assert_eq!(connect["result"]["ok"], true);
+    assert_eq!(connect["result"]["wsEndpoint"], format!("ws://{addr}"));
+}
+
+#[tokio::test]
+async fn connect_waits_until_current_page_probe_succeeds() {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let probes = Arc::new(AtomicUsize::new(0));
+    let probes_for_server = probes.clone();
+
+    tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.expect("accept");
+        let mut ws = accept_async(stream).await.expect("ws accept");
+        while let Some(message) = ws.next().await {
+            let payload = message.expect("message").into_text().expect("text");
+            let request: Value = serde_json::from_str(&payload).expect("request json");
+            let id = request.get("id").cloned().unwrap_or(Value::Null);
+            let method = request
+                .get("method")
+                .and_then(Value::as_str)
+                .expect("request method");
+
+            let response = match method {
+                "App.getCurrentPage" => {
+                    let attempt = probes_for_server.fetch_add(1, Ordering::SeqCst);
+                    if attempt < 2 {
+                        json!({
+                            "id": id,
+                            "error": {
+                                "message": "not_ready_yet"
+                            }
+                        })
+                    } else {
+                        json!({
+                            "id": id,
+                            "result": { "pageId": 1, "path": "pages/index/index", "query": {} }
+                        })
+                    }
+                }
+                _ => json!({ "id": id, "result": {} }),
+            };
+
+            ws.send(Message::Text(response.to_string().into()))
+                .await
+                .expect("send");
+        }
+    });
+
+    let paths = test_paths("connect-probe");
+    let mut state = ServerState::new(paths);
+    state
+        .runtime
+        .set_ws_endpoint_for_test(format!("ws://{addr}"));
+
+    let connect = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 12,
+            "method": "connect",
+            "params": {},
+        }),
+    )
+    .await
+    .expect("connect should wait for current page probe");
+
+    assert_eq!(connect["result"]["ok"], true);
+    assert!(
+        probes.load(Ordering::SeqCst) >= 3,
+        "connect should keep probing current page until success"
+    );
+}
+
+#[tokio::test]
 async fn view_find_wait_read_and_assert_work_on_snapshot_refs() {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let addr = listener.local_addr().expect("addr");
@@ -259,13 +448,21 @@ async fn view_find_wait_read_and_assert_work_on_snapshot_refs() {
                     json!({ "id": id, "result": { "pageId": 1, "path": "pages/index/index", "query": {} } })
                 }
                 "Page.getElement" => {
-                    json!({ "id": id, "result": { "elementId": "root-1" } })
-                }
-                "Element.getWXML" => {
                     json!({
                         "id": id,
                         "result": {
-                            "outerWxml": r#"<page><view class="card"><button class="ConfirmBtn">确定</button><input class="PhoneInput" placeholder="手机号" /></view></page>"#
+                            "elementId": "root-1",
+                            "nodeId": "node-root-1",
+                            "tagName": "body"
+                        }
+                    })
+                }
+                "Element.getWXML" => {
+                    assert_eq!(request["params"]["nodeId"], "node-root-1");
+                    json!({
+                        "id": id,
+                        "result": {
+                            "wxml": r#"<page><view class="card"><button class="ConfirmBtn">确定</button><input class="PhoneInput" placeholder="手机号" /></view></page>"#
                         }
                     })
                 }

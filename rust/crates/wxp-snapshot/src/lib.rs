@@ -312,7 +312,7 @@ fn attach_node(stack: &mut [RawNode], roots: &mut Vec<RawNode>, node: RawNode) {
 
 fn push_text(stack: &mut [RawNode], text: &str) {
     let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    if normalized.is_empty() {
+    if normalized.is_empty() || should_ignore_text_fragment(&normalized) {
         return;
     }
 
@@ -400,7 +400,7 @@ fn build_element_node(
     max_depth: usize,
     event_fingerprints: Option<&HashSet<String>>,
 ) -> Option<ElementNode> {
-    if matches!(raw.tag.as_str(), "wxs" | "script" | "style") {
+    if matches!(raw.tag.as_str(), "wxs" | "script" | "style") || is_devtools_overlay_node(raw) {
         return None;
     }
 
@@ -453,6 +453,21 @@ fn build_element_node(
         ref_id: None,
         children,
     })
+}
+
+fn should_ignore_text_fragment(text: &str) -> bool {
+    text.contains(".luna-dom-highlighter") || text.contains("#luna-dom-highlighter")
+}
+
+fn is_devtools_overlay_node(raw: &RawNode) -> bool {
+    raw.attrs
+        .get("id")
+        .is_some_and(|id| id.starts_with("luna-dom-highlighter"))
+        || raw.attrs.get("class").is_some_and(|classes| {
+            classes
+                .split_whitespace()
+                .any(|class_name| class_name.starts_with("luna-dom-highlighter"))
+        })
 }
 
 fn build_selector(

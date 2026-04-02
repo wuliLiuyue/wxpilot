@@ -10,7 +10,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use wxp_automator_client::AutomatorConnection;
-use wxp_proxy::MockRegistry;
+use wxp_proxy::{LocalProxy, MockRegistry};
 use wxp_ref_store::RefStore;
 use wxp_snapshot::ElementNode;
 use wxp_store::StoreWriter;
@@ -94,6 +94,7 @@ pub struct DaemonRuntime {
     pub snapshot_refs: HashMap<u32, SnapshotRefEntry>,
     pub request_store: StoreWriter,
     pub mock_registry: MockRegistry,
+    pub proxy: LocalProxy,
 }
 
 impl DaemonRuntime {
@@ -106,6 +107,7 @@ impl DaemonRuntime {
             snapshot_refs: HashMap::new(),
             request_store: StoreWriter::memory().expect("memory store"),
             mock_registry: MockRegistry::default(),
+            proxy: LocalProxy::default(),
         }
     }
 
@@ -156,6 +158,7 @@ impl fmt::Debug for DaemonRuntime {
             .field("has_connection", &self.connection.is_some())
             .field("snapshot_version", &self.snapshot_version)
             .field("snapshot_ref_count", &self.snapshot_refs.len())
+            .field("proxy_running", &self.proxy.is_running())
             .finish()
     }
 }

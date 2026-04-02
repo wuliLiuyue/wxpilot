@@ -1,22 +1,87 @@
 import { describe, expect, it, vi } from 'vitest'
-import { connectWithFallback } from '../../packages/cli/src/client.js'
+import { connectToDaemon, stopDaemon } from '../../packages/cli/src/client.js'
 
 describe('cli fallback', () => {
-  it('prefers rust daemon and falls back to ts daemon when rust probe fails', async () => {
+  it('仅连接指定的 rust daemon，不自动回退到 ts daemon', async () => {
     const connect = vi
       .fn()
       .mockRejectedValueOnce(new Error('ECONNREFUSED'))
+      .mockRejectedValueOnce(new Error('still booting'))
+      .mockResolvedValueOnce({ socketPath: '/tmp/rust.sock', daemonKind: 'rust' })
+
+    const spawnRustDaemon = vi.fn()
+    const spawnTsDaemon = vi.fn()
+    const wait = vi.fn().mockResolvedValue(undefined)
+
+    const result = await connectToDaemon('rust', {
+      connect,
+      spawnRustDaemon,
+      spawnTsDaemon,
+      wait,
+    })
+
+    expect(result.daemonKind).toBe('rust')
+    expect(connect).toHaveBeenCalledTimes(3)
+    expect(connect).toHaveBeenNthCalledWith(1, 'rust')
+    expect(connect).toHaveBeenNthCalledWith(2, 'rust')
+    expect(connect).toHaveBeenNthCalledWith(3, 'rust')
+    expect(spawnRustDaemon).toHaveBeenCalledTimes(1)
+    expect(spawnTsDaemon).not.toHaveBeenCalled()
+    expect(wait).toHaveBeenCalledTimes(1)
+  })
+
+  it('显式指定 ts 时只连接 ts daemon', async () => {
+    const connect = vi
+      .fn()
       .mockResolvedValueOnce({ socketPath: '/tmp/ts.sock', daemonKind: 'ts' })
 
-    const spawn = vi.fn()
+    const spawnRustDaemon = vi.fn()
+    const spawnTsDaemon = vi.fn()
+    const wait = vi.fn().mockResolvedValue(undefined)
 
-    const result = await connectWithFallback({
+    const result = await connectToDaemon('ts', {
       connect,
-      spawnRustDaemon: spawn,
-      spawnTsDaemon: spawn,
+      spawnRustDaemon,
+      spawnTsDaemon,
+      wait,
     })
 
     expect(result.daemonKind).toBe('ts')
-    expect(connect).toHaveBeenCalledTimes(2)
+    expect(connect).toHaveBeenCalledTimes(1)
+    expect(connect).toHaveBeenNthCalledWith(1, 'ts')
+    expect(spawnRustDaemon).not.toHaveBeenCalled()
+    expect(spawnTsDaemon).not.toHaveBeenCalled()
+    expect(wait).not.toHaveBeenCalled()
+  })
+
+  it('daemon stop 在 socket 丢失时会按进程名兜底清理', async () => {
+    const rpcStop = vi.fn().mockRejectedValue(new Error('timeout after 10000ms'))
+    const probe = vi.fn().mockResolvedValue(false)
+    const readPidFile = vi.fn().mockReturnValue(null)
+    const listProcessIds = vi.fn().mockReturnValue([1234, 5678])
+    const killPid = vi.fn()
+    const removeRuntimeFile = vi.fn()
+    const wait = vi.fn().mockResolvedValue(undefined)
+
+    const result = await stopDaemon('rust', {
+      rpcStop,
+      probe,
+      readPidFile,
+      listProcessIds,
+      killPid,
+      removeRuntimeFile,
+      wait,
+    })
+
+    expect(result.forced).toBe(true)
+    expect(rpcStop).toHaveBeenCalledTimes(1)
+    expect(probe).toHaveBeenCalledWith('rust')
+    expect(readPidFile).toHaveBeenCalledWith('rust')
+    expect(listProcessIds).toHaveBeenCalledWith('rust')
+    expect(killPid).toHaveBeenCalledTimes(2)
+    expect(killPid).toHaveBeenNthCalledWith(1, 1234)
+    expect(killPid).toHaveBeenNthCalledWith(2, 5678)
+    expect(removeRuntimeFile).toHaveBeenCalledTimes(2)
+    expect(wait).toHaveBeenCalled()
   })
 })

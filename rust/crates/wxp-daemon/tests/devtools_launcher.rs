@@ -69,6 +69,15 @@ exit {exit_code}
     write_cli_script(path, &body);
 }
 
+fn write_zero_exit_without_success_marker_script(path: &Path) {
+    let body = r#"
+if [ "$1" != "auto" ]; then exit 2; fi
+printf 'opened project but automator is not ready\n'
+exit 0
+"#;
+    write_cli_script(path, body);
+}
+
 fn write_timeout_script(path: &Path) {
     let body = r#"
 if [ "$1" != "auto" ]; then exit 2; fi
@@ -147,6 +156,22 @@ fn run_auto_returns_error_when_cli_exits_non_zero() {
     let error = launcher
         .run_auto("/tmp/project", 9420, Some(cli_path), Some("wx1234567890"))
         .expect_err("non-zero exit should fail");
+
+    assert_eq!(error.kind(), ErrorKind::Other);
+}
+
+#[cfg(unix)]
+#[test]
+fn run_auto_returns_error_when_cli_exits_zero_without_success_marker() {
+    let root = unique_test_dir("run-auto-missing-marker");
+    fs::create_dir_all(&root).expect("create temp root");
+    let cli_path = root.join("cli");
+    write_zero_exit_without_success_marker_script(&cli_path);
+
+    let launcher = DevtoolsLauncher::new(vec![]);
+    let error = launcher
+        .run_auto("/tmp/project", 9420, Some(cli_path), None)
+        .expect_err("zero exit without success marker should fail");
 
     assert_eq!(error.kind(), ErrorKind::Other);
 }

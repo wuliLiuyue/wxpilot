@@ -61,15 +61,27 @@ async fn route_and_element_actions_forward_to_automator() {
                     json!({ "id": id, "result": { "pageId": 1, "path": "pages/index/index", "query": {} } })
                 }
                 "Page.getElement" => {
-                    json!({ "id": id, "result": { "elementId": "element-1" } })
+                    json!({
+                        "id": id,
+                        "result": {
+                            "elementId": "element-1",
+                            "nodeId": "node-element-1",
+                            "tagName": "button"
+                        }
+                    })
                 }
                 "Element.getWXML" => {
+                    assert_eq!(request["params"]["nodeId"], "node-element-1");
                     json!({
                         "id": id,
                         "result": {
                             "outerWxml": r#"<page><view class="card"><button class="ConfirmBtn">确定</button><input class="PhoneInput" placeholder="手机号" /></view></page>"#
                         }
                     })
+                }
+                "Element.tap" | "Element.callFunction" => {
+                    assert_eq!(request["params"]["nodeId"], "node-element-1");
+                    json!({ "id": id, "result": { "ok": true } })
                 }
                 _ => json!({ "id": id, "result": { "ok": true } }),
             };
