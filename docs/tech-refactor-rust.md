@@ -2,13 +2,13 @@
 
 ## Summary
 
-本方案将 `wxpilot` 演进为 `TS CLI + Rust Daemon + TS Daemon fallback` 的双实现架构，目标是在不打断现有使用方式的前提下，把性能敏感、稳定性敏感、后续可闭源的核心能力全部下沉到 Rust。
+本方案将 `wxpilot` 演进为 `TS CLI + Rust Daemon + 可选 TS Daemon` 的双实现架构，目标是在不打断现有使用方式的前提下，把性能敏感、稳定性敏感、后续可闭源的核心能力全部下沉到 Rust。
 
 这版方案的核心原则已经固定：
 
 - 只重构 `daemon`，CLI 暂不整体重构
 - Rust daemon 对现有 TS CLI 完全兼容
-- 过渡期同时支持 TS/Rust daemon，CLI 默认优先 Rust，失败回退 TS
+- 过渡期同时保留 TS/Rust daemon，但 CLI 默认只连接显式指定的 daemon，不再自动回退
 - automator 由 Rust 直接接管，基于 `miniprogram-automator` npm 包编译产物逆向实现
 - 首阶段不做商业化授权控制，但在模块边界上预留挂点
 - Rust 切主门槛是 `功能对齐 + 回归通过`，性能提升作为阶段收益，不作为唯一门槛
@@ -20,7 +20,7 @@
 - `packages/cli` 保持 TS，职责只保留为命令解析、daemon 探测、socket 请求、结果输出
 - 新增 Rust workspace，建议目录为 `rust/`
 - Rust daemon 作为长期主实现，负责所有运行时、协议、代理、解析、落库能力
-- TS daemon 在过渡期保留，只作为 fallback，不继续演进新能力
+- TS daemon 在过渡期保留，只作为显式指定的兼容实现，不继续演进新能力
 
 ### Rust workspace 结构
 
@@ -57,22 +57,23 @@
 - CLI 继续保留当前命令面、帮助文本、默认参数和输出风格
 - 仅增加 daemon 发现逻辑，不改命令语义
 - 探测顺序固定为：
-  - 先连接 Rust socket
-  - Rust 不可用时连接 TS socket
-  - 两者都不可用时先拉起 Rust，Rust 拉起失败再拉起 TS
+  - 默认连接 Rust socket
+  - Rust 不可用时仅拉起 Rust 并继续探测 Rust
+  - 仅当用户显式指定 `--daemon-kind ts` 时才连接或拉起 TS daemon
 - CLI 需要支持读取 Rust daemon 的 `health/version/capabilities`，但这些只作为内部探测接口
 - `status` 返回中新增 `daemonKind: rust | ts`，其余字段保持兼容
 - 输出截断、`ref_expired` 格式、`state/view/net log` 的默认简化逻辑保持现状
 
 ### 2. Daemon Runtime
 
-- Rust daemon 使用独立目录，例如 `~/.wxpilot/rust/`
+- Rust daemon 使用 `~/.wxpilot/` 下的独立前缀文件
 - 路径包含：
-  - `daemon.sock`
-  - `daemon.pid`
-  - `daemon.db`
-  - `ca/`
-  - `logs/`
+  - `rust-daemon.sock`
+  - `rust-daemon.pid`
+  - `rust-daemon-state.json`
+  - `rust-daemon.db`
+  - `rust-ca/`
+  - `rust-logs/`
 - 保留单实例约束，使用 pid file + 文件锁双保险
 - 保留 30 分钟空闲退出语义
 - 所有外部请求经过统一 `RequestContext`，记录：

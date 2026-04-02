@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 在保持现有 TypeScript CLI 命令面与输出稳定的前提下，引入 Rust daemon 主实现，并让 CLI 具备 Rust 优先、TS fallback 的双 daemon 能力。
+**Goal:** 在保持现有 TypeScript CLI 命令面与输出稳定的前提下，引入 Rust daemon 主实现，并保留通过显式参数选择 Rust/TS daemon 的双 daemon 能力。
 
 **Architecture:** 先冻结现有 TS daemon 的 RPC 契约与 CLI 输出，再建立 `rust/` workspace 的公共层、协议层与 daemon 骨架。随后按读路径、snapshot/ref、动作链路、proxy/store、灰度回归的顺序逐层替换 TS daemon 能力，同时维持 CLI 对外行为兼容。
 
@@ -26,8 +26,8 @@
 ### Existing files to modify
 
 - Modify: `package.json` - 接入 Rust workspace 相关脚本。
-- Modify: `README.md` - 更新双 daemon 启动、fallback 与验证说明。
-- Modify: `packages/cli/src/client.ts` - 双 daemon socket 探测、spawn 与 fallback。
+- Modify: `README.md` - 更新双 daemon 启动、显式选择 daemon 与验证说明。
+- Modify: `packages/cli/src/client.ts` - 双 daemon socket 探测、spawn 与显式 daemon 选择。
 - Modify: `packages/cli/src/index.ts` - `status` 输出 `daemonKind`，必要时增加内部探测调用。
 - Modify: `packages/daemon/src/rpc-server.ts` - 抽取 TS 契约 fixture 生成逻辑或补充契约测试入口。
 - Modify: `packages/daemon/src/snapshot/parser.test.ts` - 迁移为 Rust snapshot 行为对齐的 fixture 来源。

@@ -3,7 +3,7 @@ use std::{
     fmt,
     fs::{self, OpenOptions},
     io::{self, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -98,17 +98,9 @@ pub struct DaemonRuntime {
 }
 
 impl DaemonRuntime {
-    pub fn new(saved: DaemonState) -> Self {
-        Self {
-            saved,
-            connection: None,
-            ref_store: RefStore::default(),
-            snapshot_version: 0,
-            snapshot_refs: HashMap::new(),
-            request_store: StoreWriter::memory().expect("memory store"),
-            mock_registry: MockRegistry::default(),
-            proxy: LocalProxy::default(),
-        }
+    pub fn new(saved: DaemonState, db_file: &Path) -> io::Result<Self> {
+        let request_store = StoreWriter::open(db_file).map_err(io::Error::other)?;
+        Ok(Self::from_request_store(saved, request_store))
     }
 
     pub fn set_ws_endpoint_for_test(&mut self, endpoint: String) {
@@ -148,6 +140,19 @@ impl DaemonRuntime {
     pub fn invalidate_refs(&mut self) {
         self.snapshot_refs.clear();
         self.ref_store = RefStore::default();
+    }
+
+    fn from_request_store(saved: DaemonState, request_store: StoreWriter) -> Self {
+        Self {
+            saved,
+            connection: None,
+            ref_store: RefStore::default(),
+            snapshot_version: 0,
+            snapshot_refs: HashMap::new(),
+            request_store,
+            mock_registry: MockRegistry::default(),
+            proxy: LocalProxy::default(),
+        }
     }
 }
 

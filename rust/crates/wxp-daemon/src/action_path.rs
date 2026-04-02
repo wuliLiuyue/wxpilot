@@ -21,6 +21,9 @@ pub async fn handle_action(
         "tap" => tap(state, id, params).await,
         "type" => type_text(state, id, params).await,
         "scroll" => scroll(state, id, params).await,
+        "shot" => shot(state, id, params).await,
+        "run" => run_script(state, id, params).await,
+        "wx" => wx_call(state, id, params).await,
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!("unsupported action method: {method}"),
@@ -166,6 +169,83 @@ async fn scroll(state: &mut ServerState, id: Value, params: &Value) -> io::Resul
     ))
 }
 
+async fn shot(state: &mut ServerState, id: Value, params: &Value) -> io::Result<Value> {
+    let base64 = params
+        .get("base64")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let mut request = serde_json::Map::new();
+    request.insert("base64".into(), Value::Bool(base64));
+    if let Some(path) = params.get("path").and_then(Value::as_str) {
+        request.insert("path".into(), Value::String(path.to_string()));
+    }
+
+    let result = state
+        .call_automator(
+            &id,
+            "shot",
+            "App.captureScreenshot",
+            Value::Object(request),
+        )
+        .await?;
+
+    let path = result
+        .get("path")
+        .cloned()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "screenshot_path_missing"))?;
+    let mut response = serde_json::Map::new();
+    response.insert("ok".into(), Value::Bool(true));
+    response.insert("path".into(), path);
+    if let Some(base64) = result.get("base64").cloned() {
+        response.insert("base64".into(), base64);
+    }
+
+    Ok(ok_result(id, Value::Object(response)))
+}
+
+async fn run_script(state: &mut ServerState, id: Value, params: &Value) -> io::Result<Value> {
+    let js = params
+        .get("js")
+        .and_then(Value::as_str)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing js"))?;
+    let function_declaration = normalize_function_declaration(js);
+    let result = state
+        .call_automator(
+            &id,
+            "run",
+            "App.callFunction",
+            json!({ "functionDeclaration": function_declaration }),
+        )
+        .await?;
+
+    Ok(ok_result(id, json!({ "ok": true, "result": result })))
+}
+
+async fn wx_call(state: &mut ServerState, id: Value, params: &Value) -> io::Result<Value> {
+    let method = params
+        .get("method")
+        .and_then(Value::as_str)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing method"))?;
+    let args = params.get("args").cloned().unwrap_or_else(|| json!([]));
+    if !args.is_array() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "args must be an array",
+        ));
+    }
+
+    let result = state
+        .call_automator(
+            &id,
+            "wx",
+            "App.callWxMethod",
+            json!({ "method": method, "args": args }),
+        )
+        .await?;
+
+    Ok(ok_result(id, json!({ "ok": true, "result": result })))
+}
+
 async fn resolve_element_request(
     state: &mut ServerState,
     request_id: &Value,
@@ -206,6 +286,14 @@ fn parse_ref(params: &Value) -> io::Result<u32> {
         .and_then(Value::as_u64)
         .map(|value| value as u32)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing ref"))
+}
+
+fn normalize_function_declaration(js: &str) -> String {
+    if js.trim_start().starts_with("function") {
+        js.to_string()
+    } else {
+        format!("function() {{ return ({}); }}", js)
+    }
 }
 
 fn ok_result(id: Value, result: Value) -> Value {

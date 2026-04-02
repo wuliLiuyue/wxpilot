@@ -100,7 +100,7 @@ fn state_store_round_trips_project_and_endpoint() {
 
 #[test]
 fn local_status_reports_rust_daemon_without_saved_connection() {
-    let state = ServerState::new(test_paths("status"));
+    let state = ServerState::new(test_paths("status")).expect("server state");
 
     let response = dispatch_local_request(
         &state,
@@ -187,7 +187,10 @@ fn default_runtime_paths_match_cli_probe_locations() {
 fn uds_server_handles_probe_status_and_stop_requests() {
     let paths = short_test_paths("uds");
     let server_paths = paths.clone();
-    let handle = thread::spawn(move || serve_forever(ServerState::new(server_paths)));
+    let handle = thread::spawn(move || {
+        let state = ServerState::new(server_paths).expect("server state");
+        serve_forever(state)
+    });
 
     wait_for_socket(&paths.rust_socket);
 

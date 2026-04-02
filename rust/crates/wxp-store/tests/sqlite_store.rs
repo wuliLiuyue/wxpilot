@@ -1,4 +1,17 @@
+use std::{
+    path::PathBuf,
+    time::{SystemTime, UNIX_EPOCH},
+};
+
 use wxp_store::{RequestLog, StoreWriter};
+
+fn unique_db_path(name: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time went backwards")
+        .as_nanos();
+    std::env::temp_dir().join(format!("wxp-store-{name}-{nanos}/requests.sqlite3"))
+}
 
 #[test]
 fn request_logs_are_truncated_at_2000_chars() {
@@ -57,4 +70,61 @@ fn list_requests_omits_body_by_default() {
     assert_eq!(stored.len(), 1);
     assert_eq!(stored[0].req_body, None);
     assert_eq!(stored[0].res_body, None);
+}
+
+#[test]
+fn list_requests_accepts_i64_max_limit_without_overflowing() {
+    let writer = StoreWriter::memory().unwrap();
+    writer
+        .insert_request(RequestLog::new(
+            "GET",
+            "https://wxpilot.test/overflow",
+            None,
+            None,
+        ))
+        .unwrap();
+
+    let stored = writer.list_requests(i64::MAX as usize, false).unwrap();
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0].url, "https://wxpilot.test/overflow");
+}
+
+#[test]
+fn file_store_persists_requests_across_reopen() {
+    let db_path = unique_db_path("persist-reopen");
+    let writer = StoreWriter::open(&db_path).unwrap();
+    writer
+        .insert_request(RequestLog::new(
+            "POST",
+            "https://wxpilot.test/persist",
+            Some("{\"hello\":\"world\"}".into()),
+            Some("{\"ok\":true}".into()),
+        ))
+        .unwrap();
+
+    drop(writer);
+
+    let reopened = StoreWriter::open(&db_path).unwrap();
+    let stored = reopened.list_requests(20, true).unwrap();
+
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0].method, "POST");
+    assert_eq!(stored[0].url, "https://wxpilot.test/persist");
+    assert_eq!(stored[0].req_body.as_deref(), Some("{\"hello\":\"world\"}"));
+    assert_eq!(stored[0].res_body.as_deref(), Some("{\"ok\":true}"));
+}
+
+#[cfg(target_pointer_width = "64")]
+#[test]
+fn list_requests_rejects_limits_larger_than_i64_max() {
+    let writer = StoreWriter::memory().unwrap();
+
+    let error = writer
+        .list_requests(usize::MAX, false)
+        .expect_err("limits above i64::MAX should fail");
+
+    assert!(
+        error.to_string().contains("request limit exceeds i64::MAX"),
+        "unexpected error: {error}"
+    );
 }

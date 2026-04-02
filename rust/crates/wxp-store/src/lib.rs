@@ -1,4 +1,9 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    fs,
+    io,
+    path::Path,
+    sync::{Arc, Mutex},
+};
 
 use rusqlite::{params, Connection, Result};
 
@@ -48,18 +53,17 @@ pub struct StoreWriter {
 impl StoreWriter {
     pub fn memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS requests (
-                id INTEGER PRIMARY KEY,
-                method TEXT NOT NULL,
-                url TEXT NOT NULL,
-                req_body TEXT,
-                res_body TEXT
-            );",
-        )?;
-        Ok(Self {
-            conn: Arc::new(Mutex::new(conn)),
-        })
+        Self::from_connection(conn)
+    }
+
+    pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+        let path = path.as_ref();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
+        }
+        let conn = Connection::open(path)?;
+        Self::from_connection(conn)
     }
 
     pub fn insert_request(&self, log: RequestLog) -> Result<()> {
@@ -73,13 +77,19 @@ impl StoreWriter {
 
     pub fn list_requests(&self, limit: usize, with_body: bool) -> Result<Vec<RequestLog>> {
         let conn = self.conn.lock().expect("store connection lock poisoned");
+        let limit = i64::try_from(limit).map_err(|_| {
+            rusqlite::Error::ToSqlConversionFailure(Box::new(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "request limit exceeds i64::MAX",
+            )))
+        })?;
         let mut stmt = conn.prepare(
             "SELECT method, url, req_body, res_body
              FROM requests
              ORDER BY id DESC
              LIMIT ?1",
         )?;
-        let rows = stmt.query_map(params![limit as i64], |row| {
+        let rows = stmt.query_map(params![limit], |row| {
             let req_body = if with_body { row.get(2)? } else { None };
             let res_body = if with_body { row.get(3)? } else { None };
 
@@ -99,4 +109,24 @@ impl StoreWriter {
         conn.execute("DELETE FROM requests", [])?;
         Ok(())
     }
+
+    fn from_connection(conn: Connection) -> Result<Self> {
+        init_schema(&conn)?;
+        Ok(Self {
+            conn: Arc::new(Mutex::new(conn)),
+        })
+    }
+}
+
+fn init_schema(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS requests (
+            id INTEGER PRIMARY KEY,
+            method TEXT NOT NULL,
+            url TEXT NOT NULL,
+            req_body TEXT,
+            res_body TEXT
+        );",
+    )?;
+    Ok(())
 }
