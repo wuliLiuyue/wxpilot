@@ -12,6 +12,63 @@ use crate::{
     server::ServerState,
 };
 
+pub async fn handle_state(
+    state: &mut ServerState,
+    id: Value,
+    params: &Value,
+) -> io::Result<Value> {
+    let data = read_state_data(state, &id).await?;
+    let path = params
+        .get("path")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let full = params.get("full").and_then(Value::as_bool).unwrap_or(false);
+
+    if let Some(path) = path {
+        return Ok(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {
+                "ok": true,
+                "data": read_data_path(&data, path).cloned().unwrap_or(Value::Null),
+            }
+        }));
+    }
+
+    if !full && should_return_summary(&data) {
+        return Ok(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {
+                "ok": true,
+                "summary": summarize_top_level_object(&data),
+                "hint": "use --full or specify a path to get full data",
+            }
+        }));
+    }
+
+    if full {
+        return Ok(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {
+                "ok": true,
+                "data": data,
+            }
+        }));
+    }
+
+    Ok(json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": {
+            "ok": true,
+            "data": data,
+        }
+    }))
+}
+
 pub async fn handle_view(state: &mut ServerState, id: Value, params: &Value) -> io::Result<Value> {
     let full = params.get("full").and_then(Value::as_bool).unwrap_or(false);
     let compact = if full {
@@ -239,6 +296,26 @@ struct SnapshotPayload {
     tree: Vec<wxp_snapshot::ElementNode>,
 }
 
+async fn read_state_data(state: &mut ServerState, request_id: &Value) -> io::Result<Value> {
+    let current_page = state
+        .call_automator(request_id, "current_page", "App.getCurrentPage", json!({}))
+        .await?;
+    let page_id = current_page
+        .get("pageId")
+        .cloned()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "page_id_missing"))?;
+    let data = state
+        .call_automator(
+            request_id,
+            "page_data",
+            "Page.getData",
+            json!({ "pageId": page_id }),
+        )
+        .await?;
+
+    Ok(data.get("data").cloned().unwrap_or(Value::Null))
+}
+
 async fn build_snapshot(
     state: &mut ServerState,
     request_id: &Value,
@@ -304,6 +381,50 @@ fn serialize_matches(matches: &[FindMatch]) -> Vec<Value> {
             })
         })
         .collect()
+}
+
+fn read_data_path<'a>(data: &'a Value, path: &str) -> Option<&'a Value> {
+    path.split('.')
+        .filter(|segment| !segment.is_empty())
+        .try_fold(data, |current, segment| match current {
+            Value::Object(map) => map.get(segment),
+            Value::Array(items) => segment
+                .parse::<usize>()
+                .ok()
+                .and_then(|index| items.get(index)),
+            _ => None,
+        })
+}
+
+fn should_return_summary(data: &Value) -> bool {
+    matches!(data, Value::Object(_))
+}
+
+fn summarize_top_level_object(data: &Value) -> Value {
+    let Value::Object(map) = data else {
+        return Value::Null;
+    };
+
+    Value::Object(
+        map.iter()
+            .map(|(key, value)| (key.clone(), Value::String(summarize_value(value))))
+            .collect(),
+    )
+}
+
+fn summarize_value(value: &Value) -> String {
+    let json = serde_json::to_string(value).unwrap_or_else(|_| "null".to_string());
+    format!("{}({})", js_typeof(value), json.encode_utf16().count())
+}
+
+fn js_typeof(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "object",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) | Value::Object(_) => "object",
+    }
 }
 
 fn error_response(id: Value, code: i64, message: &str, data: Option<Value>) -> Value {

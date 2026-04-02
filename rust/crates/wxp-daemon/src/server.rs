@@ -64,21 +64,12 @@ pub struct ServerState {
 }
 
 impl ServerState {
-    pub fn new(paths: RuntimePaths) -> Self {
-        let store = StateStore::new(paths.state_file.clone());
-        let mut saved = store.load().unwrap_or_default();
-        if saved.connected {
-            saved.connected = false;
-            let _ = store.save(&saved);
-        }
-        Self {
-            daemon_kind: wxp_common::DAEMON_KIND,
-            paths,
-            default_proxy_port: 8899,
-            launcher: DevtoolsLauncher::new(DevtoolsLauncher::default_candidates()),
-            runtime: DaemonRuntime::new(saved),
-            store,
-        }
+    pub fn new(paths: RuntimePaths) -> io::Result<Self> {
+        let (store, saved) = Self::prepare_store(&paths);
+        let db_file = paths.db_file.clone();
+        let runtime = DaemonRuntime::new(saved, &db_file)?;
+
+        Ok(Self::build(paths, store, runtime))
     }
 
     pub(crate) fn persist_runtime_state(
@@ -117,30 +108,114 @@ impl ServerState {
             })
     }
 
-    async fn read_state_data(&mut self, request_id: &Value) -> io::Result<Value> {
-        let current_page = self
-            .call_automator(request_id, "current_page", "App.getCurrentPage", json!({}))
-            .await?;
-        let page_id = current_page
-            .get("pageId")
-            .cloned()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "page_id_missing"))?;
-        let data = self
-            .call_automator(
-                request_id,
-                "page_data",
-                "Page.getData",
-                json!({ "pageId": page_id }),
-            )
-            .await?;
+    fn prepare_store(paths: &RuntimePaths) -> (StateStore, crate::runtime::DaemonState) {
+        let store = StateStore::new(paths.state_file.clone());
+        let mut saved = store.load().unwrap_or_default();
+        if saved.connected {
+            saved.connected = false;
+            let _ = store.save(&saved);
+        }
+        (store, saved)
+    }
 
-        Ok(data.get("data").cloned().unwrap_or(Value::Null))
+    fn build(paths: RuntimePaths, store: StateStore, runtime: DaemonRuntime) -> Self {
+        Self {
+            daemon_kind: wxp_common::DAEMON_KIND,
+            paths,
+            default_proxy_port: 8899,
+            store,
+            launcher: DevtoolsLauncher::new(DevtoolsLauncher::default_candidates()),
+            runtime,
+        }
     }
 }
 
-impl Default for ServerState {
-    fn default() -> Self {
-        Self::new(RuntimePaths::default())
+#[cfg(test)]
+mod tests {
+    use std::{
+        fs,
+        io,
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use wxp_store::RequestLog;
+
+    use super::{RuntimePaths, ServerState};
+
+    fn unique_test_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time went backwards")
+            .as_nanos();
+        std::env::temp_dir().join(format!("wxp-daemon-server-{name}-{nanos}"))
+    }
+
+    fn invalid_db_paths(name: &str) -> RuntimePaths {
+        let root = unique_test_dir(name);
+        fs::create_dir_all(&root).expect("create temp root");
+        let db_dir = root.join("db-dir");
+        fs::create_dir_all(&db_dir).expect("create db dir");
+        RuntimePaths {
+            root_dir: root.clone(),
+            rust_socket: root.join("rust-daemon.sock"),
+            rust_pid: root.join("rust-daemon.pid"),
+            state_file: root.join("rust-daemon-state.json"),
+            db_file: db_dir,
+            ca_dir: root.join("ca"),
+            log_dir: root.join("logs"),
+        }
+    }
+
+    fn valid_paths(name: &str) -> RuntimePaths {
+        let root = unique_test_dir(name);
+        fs::create_dir_all(&root).expect("create temp root");
+        RuntimePaths {
+            root_dir: root.clone(),
+            rust_socket: root.join("rust-daemon.sock"),
+            rust_pid: root.join("rust-daemon.pid"),
+            state_file: root.join("rust-daemon-state.json"),
+            db_file: root.join("rust-daemon.db"),
+            ca_dir: root.join("ca"),
+            log_dir: root.join("logs"),
+        }
+    }
+
+    #[test]
+    fn server_state_new_returns_error_when_db_file_cannot_open() {
+        let error = ServerState::new(invalid_db_paths("new-error"))
+            .expect_err("directory db path should fail");
+
+        assert_eq!(error.kind(), io::ErrorKind::Other);
+    }
+
+    #[test]
+    fn server_state_new_persists_requests_with_file_store() {
+        let paths = valid_paths("persist-store");
+        let state = ServerState::new(paths.clone()).expect("server state");
+        state
+            .runtime
+            .request_store
+            .insert_request(RequestLog::new(
+                "POST",
+                "https://wxpilot.test/persist-server",
+                None,
+                None,
+            ))
+            .expect("insert request log");
+
+        drop(state);
+
+        let reopened = ServerState::new(paths).expect("reopen server state");
+        let stored = reopened
+            .runtime
+            .request_store
+            .list_requests(20, false)
+            .unwrap();
+
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0].method, "POST");
+        assert_eq!(stored[0].url, "https://wxpilot.test/persist-server");
     }
 }
 
@@ -332,23 +407,13 @@ pub async fn dispatch_request(state: &mut ServerState, request: &Value) -> io::R
                 }
             }))
         }
-        "state" => {
-            let data = state.read_state_data(&id).await?;
-            Ok(json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "result": {
-                    "ok": true,
-                    "data": data,
-                }
-            }))
-        }
+        "state" => read_path::handle_state(state, id, &params).await,
         "view" => read_path::handle_view(state, id, &params).await,
         "find" => read_path::handle_find(state, id, &params).await,
         "wait" => read_path::handle_wait(state, id, &params).await,
         "read" => read_path::handle_read(state, id, &params).await,
         "assert" => read_path::handle_assert(state, id, &params).await,
-        "goto" | "back" | "reload" | "tap" | "type" | "scroll" => {
+        "goto" | "back" | "reload" | "tap" | "type" | "scroll" | "shot" | "run" | "wx" => {
             action_path::handle_action(state, id, method, &params).await
         }
         "net.start" | "net.stop" | "net.log" | "net.mock" | "net.unmock" | "net.clear"
