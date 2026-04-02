@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { daemonContract } from '../../packages/daemon/src/__fixtures__/rpc-contract.js'
+import { daemonContract } from '../src/daemon-contract.js'
 
 describe('cross implementation contract suite', () => {
   it('keeps rust daemon public method list aligned with frozen contract', () => {

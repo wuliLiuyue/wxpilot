@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { connectToDaemon, stopDaemon } from '../../packages/cli/src/client.js'
+import { connectToDaemon, stopDaemon } from '../../cli/src/client.js'
 
 describe('cli fallback', () => {
   it('仅连接指定的 rust daemon，不自动回退到 ts daemon', async () => {

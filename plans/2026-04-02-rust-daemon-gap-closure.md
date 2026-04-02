@@ -25,7 +25,7 @@
 
 1. `packages/cli/src/index.ts` 已公开这些命令面，不能只修其中一层。
 2. Rust daemon 的 `server/read_path/action_path/net_path/runtime` 共同决定最终行为。
-3. `tests/contracts/*`、Rust integration tests、真实 CLI 回归命令必须一起收口，才能避免“代码能编译、契约却继续漂移”。
+3. `packages/contracts/tests/*`、Rust integration tests、真实 CLI 回归命令必须一起收口，才能避免“代码能编译、契约却继续漂移”。
 
 因此保留一份总计划更合适，不再拆子计划。
 
@@ -47,10 +47,10 @@
 - Modify: `rust/crates/wxp-daemon/tests/action_path.rs` - 补 `shot/run/wx` 行为测试。
 - Modify: `rust/crates/wxp-daemon/tests/net_path.rs` - 补 `filter/jsonFile/caPath/certFile` 契约测试。
 - Modify: `rust/crates/wxp-daemon/tests/health_probe.rs` - 校验 probe 返回的 `daemonKind/version/methods/capabilities`。
-- Create: `rust-bindings/rust-capabilities.ts` - 给 Vitest contract suite 提供与 Rust probe 同步的公开方法清单。
-- Modify: `tests/contracts/cross-implementation.spec.ts` - 让 cross-implementation 至少校验 Rust probe 导出的公开方法清单。
-- Modify: `docs/contracts/cli-output.md` - 收口 `state`、`shot`、`net.log` 的最终输出契约。
-- Modify: `docs/automator/protocol-manifest.md` - 补齐 `App.captureScreenshot`、`App.callFunction`、`App.callWxMethod` 用途说明。
+- Create: `packages/contracts/src/rust-capabilities.ts` - 给 Vitest contract suite 提供与 Rust probe 同步的公开方法清单。
+- Modify: `packages/contracts/tests/cross-implementation.spec.ts` - 让 cross-implementation 至少校验 Rust probe 导出的公开方法清单。
+- Modify: `packages/contracts/docs/cli-output.md` - 收口 `state`、`shot`、`net.log` 的最终输出契约。
+- Modify: `packages/contracts/docs/automator-protocol-manifest.md` - 补齐 `App.captureScreenshot`、`App.callFunction`、`App.callWxMethod` 用途说明。
 - Modify: `README.md` - 更新 `state`、`shot/run/wx`、`net.*` 的真实行为与回归命令。
 
 ### New support file
@@ -702,8 +702,8 @@ git commit -m "feat: align rust net contract and ca lifecycle"
 - Modify: `rust/crates/wxp-daemon/src/handlers/mod.rs`
 - Modify: `rust/crates/wxp-daemon/src/lib.rs`
 - Modify: `rust/crates/wxp-daemon/tests/health_probe.rs`
-- Create: `rust-bindings/rust-capabilities.ts`
-- Modify: `tests/contracts/cross-implementation.spec.ts`
+- Create: `packages/contracts/src/rust-capabilities.ts`
+- Modify: `packages/contracts/tests/cross-implementation.spec.ts`
 
 - [ ] **Step 1: 写失败中的 probe/cross-implementation 测试**
 
@@ -722,8 +722,8 @@ fn health_version_capabilities_publish_public_method_manifest() {
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { daemonContract } from '../../packages/daemon/src/__fixtures__/rpc-contract.js'
-import { rustPublicMethods } from '../../rust-bindings/rust-capabilities.js'
+import { daemonContract } from '../packages/contracts/src/daemon-contract.js'
+import { rustPublicMethods } from '../packages/contracts/src/rust-capabilities.js'
 
 describe('cross implementation contract suite', () => {
   it('keeps rust daemon public method list aligned with frozen contract', () => {
@@ -741,9 +741,9 @@ Run: `cd rust && cargo test -p wxp-daemon --test health_probe health_version_cap
 
 Expected: FAIL，当前 `capabilities` 没有 `methods`
 
-Run: `pnpm vitest run tests/contracts/cross-implementation.spec.ts`
+Run: `pnpm vitest run packages/contracts/tests/cross-implementation.spec.ts`
 
-Expected: FAIL，当前没有 `rust-bindings/rust-capabilities.js`
+Expected: FAIL，当前没有 `packages/contracts/src/rust-capabilities.js`
 
 - [ ] **Step 3: 写最小实现**
 
@@ -775,7 +775,7 @@ pub const PUBLIC_METHODS: &[&str] = &[
 ```
 
 ```ts
-// rust-bindings/rust-capabilities.ts
+// packages/contracts/src/rust-capabilities.ts
 export const rustPublicMethods = [
   'start', 'connect', 'disconnect', 'status',
   'goto', 'back', 'reload', 'view', 'find', 'wait',
@@ -792,14 +792,14 @@ Run: `cd rust && cargo test -p wxp-daemon --test health_probe health_version_cap
 
 Expected: PASS
 
-Run: `pnpm vitest run tests/contracts/cross-implementation.spec.ts`
+Run: `pnpm vitest run packages/contracts/tests/cross-implementation.spec.ts`
 
 Expected: PASS
 
 - [ ] **Step 5: 提交**
 
 ```bash
-git add rust/crates/wxp-daemon/src/lib.rs rust/crates/wxp-daemon/src/handlers/mod.rs rust/crates/wxp-daemon/tests/health_probe.rs rust-bindings/rust-capabilities.ts tests/contracts/cross-implementation.spec.ts
+git add rust/crates/wxp-daemon/src/lib.rs rust/crates/wxp-daemon/src/handlers/mod.rs rust/crates/wxp-daemon/tests/health_probe.rs packages/contracts/src/rust-capabilities.ts packages/contracts/tests/cross-implementation.spec.ts
 git commit -m "test: align rust probe manifest with public contract"
 ```
 
@@ -807,13 +807,13 @@ git commit -m "test: align rust probe manifest with public contract"
 
 **Files:**
 - Modify: `README.md`
-- Modify: `docs/contracts/cli-output.md`
-- Modify: `docs/automator/protocol-manifest.md`
+- Modify: `packages/contracts/docs/cli-output.md`
+- Modify: `packages/contracts/docs/automator-protocol-manifest.md`
 
 - [ ] **Step 1: 写失败中的文档对照检查清单**
 
 ```md
-<!-- docs/contracts/cli-output.md -->
+<!-- packages/contracts/docs/cli-output.md -->
 - `state` 默认返回 `summary`，`state [path]` 返回子路径值，`state --full` 返回完整 `data`
 - `shot --base64` 返回 `path + base64`
 - `run` / `wx` 返回 `result`
@@ -848,7 +848,7 @@ wxpilot wx <method> [args...]    # 返回 wx 方法结果
 ````
 
 ```md
-<!-- docs/automator/protocol-manifest.md -->
+<!-- packages/contracts/docs/automator-protocol-manifest.md -->
 | owner | method | params | result | used_by_wxpilot | covered |
 | --- | --- | --- | --- | --- | --- |
 | App | `App.captureScreenshot` | `{path?,base64?}` | `{path,base64?}` | `shot` | yes |
@@ -893,7 +893,7 @@ Expected: 返回 `ok=true` 与 `certFile`
 - [ ] **Step 5: 提交**
 
 ```bash
-git add README.md docs/contracts/cli-output.md docs/automator/protocol-manifest.md
+git add README.md packages/contracts/docs/cli-output.md packages/contracts/docs/automator-protocol-manifest.md
 git commit -m "docs: close rust daemon contract gaps"
 ```
 
