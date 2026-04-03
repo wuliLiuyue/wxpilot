@@ -407,6 +407,18 @@ pub async fn dispatch_request(state: &mut ServerState, request: &Value) -> io::R
                 }
             }))
         }
+        "disconnect" => {
+            state.runtime.invalidate_refs();
+            state.clear_connection_state()?;
+
+            Ok(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "ok": true,
+                }
+            }))
+        }
         "state" => read_path::handle_state(state, id, &params).await,
         "view" => read_path::handle_view(state, id, &params).await,
         "find" => read_path::handle_find(state, id, &params).await,

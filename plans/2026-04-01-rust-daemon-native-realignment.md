@@ -25,6 +25,22 @@
 - Rust daemon 自动拉起 `packages/daemon/dist/index.js`
 - 任何 `helper.js` / Node 子进程作为 Rust daemon 的长期运行依赖
 
+## Status Update
+
+**Last Updated:** 2026-04-03
+
+- 这份计划定义的原生化目标已基本在仓库中实现：Rust runtime、devtools launcher、automator websocket client、`start/connect/status/state`、`view/find/wait/read/assert`、`goto/back/reload/tap/type/scroll/shot/run/wx`、`net.*` 均已有实现与测试。
+- 新鲜仓库级验证结果：
+  - `pnpm lint` 通过
+  - `pnpm build` 通过
+  - `pnpm test` 通过
+- 真实微信开发者工具 / 真实项目回归已执行，确认“代码骨架缺失”已经不是主要问题；当前未闭合项收敛为少数真实协议兼容缺口。
+- 已确认的真实协议缺口：
+  - `goto` / `reload` 在真实 automator 上报 `parameter.url should be String instead of Undefined`
+  - `type` / `scroll` 在真实 automator 上报 `functionName is not provided`，并会导致连接断开
+  - `disconnect` CLI 已暴露，但 Rust daemon 仍返回 `unsupported method: disconnect`
+- 因此本文件保留为“原生化对齐计划”，实时缺口收口与回归记录以 `plans/2026-04-02-rust-daemon-gap-closure.md` 为准。
+
 ## Scope
 
 这份计划只覆盖“未完成且必须按技术方案原生实现”的部分，不重做已完成的契约冻结和 CLI daemon 选择逻辑：

@@ -10,12 +10,76 @@
 
 ## Progress Update
 
-**Last Updated:** 2026-04-02
+**Last Updated:** 2026-04-03
 
 - `Task 1` 已完成并验证：`state` 已对齐 `summary/path/full` 契约，`cargo test -p wxp-daemon --test read_path` 通过。已知残留：`state` 的 `truncated/originalLength` 仍未对齐 TS，留待后续统一处理。
 - `Task 2` 已完成并验证：`shot/run/wx` 已接入 Rust action 路由，`run` 语义已对齐 TS 的函数包装规则，`cargo test -p wxp-daemon --test action_path` 通过。
 - `Task 3` 已完成并验证：request store 已切到文件型 SQLite，daemon 初始化错误已改为显式 `Result` 传播，`cargo test -p wxp-store` 与 `cargo test -p wxp-daemon` 均通过。
-- `Task 4` 未开始实现，仅完成现状与目标契约对照；明天从 `net.mock/net.log/net.start/net.install-ca` 和 `ca.rs` 开始。
+- `Task 4` 已完成并验证：`net.mock/net.log/net.start/net.stop/net.unmock/net.clear/net.install-ca` 已落地，`cargo test -p wxp-daemon --test net_path` 通过。
+- `Task 5` 已完成并验证：probe/capabilities public method manifest 与 cross-implementation contract 已落地，`cargo test -p wxp-daemon --test health_probe` 与 `pnpm vitest run packages/contracts/tests/cross-implementation.spec.ts` 通过。
+- `Task 6` 的文档收口已完成：`README.md`、`packages/contracts/docs/cli-output.md`、`packages/contracts/docs/automator-protocol-manifest.md` 已同步到当前实现。
+- 新鲜仓库级验证结果：
+  - `pnpm lint` 通过
+  - `pnpm build` 通过
+  - `pnpm test` 通过
+- 当前未闭合项已从“缺真实回归证据”收敛为少数真实协议兼容缺口：`goto`、`reload`、`type`、`scroll`、`disconnect`。
+
+## Real Regression Update
+
+**Last Updated:** 2026-04-03
+
+- 状态：已完成首轮真实项目回归
+- 回归环境：
+  - 项目：`/Users/liaochengxing/Documents/workspace/frontend/fe-casamiel-miniprogram/main/dist`
+  - 微信开发者工具 CLI：`/Applications/Wechat Devtools Stable.app/Contents/MacOS/cli`
+  - daemon kind：`rust`
+- 真实回归中已通过的命令：
+  - `status`
+  - `start`
+  - `connect`
+  - `view`
+  - `find`
+  - `find --all`
+  - `wait`
+  - `read`
+  - `assert`
+  - `tap`
+  - `back`
+  - `state`
+  - `state [path]`
+  - `state --full`
+  - `shot`
+  - `run`
+  - `wx`
+  - `net.log`
+  - `net.mock`
+  - `net.unmock`
+  - `net.clear`
+  - `net.stop`
+  - `net.start --https`
+  - `net.install-ca`
+  - `daemon restart`
+  - `daemon stop`
+- 真实回归中确认失败的命令 / 缺口：
+  - `goto`
+    - 实机错误：`protocol_error: parameter error: parameter.url should be String instead of Undefined;`
+    - 影响：命令失败，并导致 automator 连接断开
+  - `reload`
+    - 实机错误：`protocol_error: parameter error: parameter.url should be String instead of Undefined;`
+    - 影响：命令失败，并导致 automator 连接断开
+  - `type`
+    - 实机错误：`protocol_error: functionName is not provided`
+    - 影响：命令失败，并导致 automator 连接断开
+  - `scroll`
+    - 实机错误：`protocol_error: functionName is not provided`
+    - 影响：命令失败，并导致 automator 连接断开
+  - `disconnect`
+    - 实机错误：`unsupported method: disconnect`
+    - 影响：CLI 已公开该命令，但 Rust daemon 尚未实现对应 RPC
+- 真实回归中的关键观察：
+  - 首页 `pages/index/index` 的交互 ref 可 `wait`，但很多节点没有 `text/placeholder`，因此直接 `read` 会返回兼容错误 `ref_expired`；这更像当前兼容策略限制，不是 ref 生命周期本身失效。
+  - `find 余额` 在默认“仅交互节点”模式下返回 0 条；`find 余额 --all` 可命中 9 条非交互节点，和页面真实结构一致。
+  - 使用 `wx navigateTo({"url":"/takeaway/pages/search/search"})` 可以绕过 `goto` 缺口，成功进入带 `input` / `scroll-view` 的真实页面，从而验证 `wait/read/assert/tap`。
 
 ---
 
