@@ -133,8 +133,7 @@ impl ServerState {
 #[cfg(test)]
 mod tests {
     use std::{
-        fs,
-        io,
+        fs, io,
         path::PathBuf,
         time::{SystemTime, UNIX_EPOCH},
     };
@@ -343,6 +342,7 @@ pub async fn dispatch_request(state: &mut ServerState, request: &Value) -> io::R
                 Err(error)
                     if is_proxy_error(&error.to_string()) && !state.runtime.proxy.is_running() =>
                 {
+                    state.runtime.proxy.disable_https();
                     state.runtime.proxy.start(state.default_proxy_port)?;
                     state.launcher.run_auto(&project_path, port, None, appid)?
                 }

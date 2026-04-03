@@ -20,16 +20,17 @@ pub async fn handle_net_request(
                 .get("url")
                 .and_then(Value::as_str)
                 .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing url"))?;
-            let body = params
-                .get("body")
-                .cloned()
-                .unwrap_or(Value::Null)
-                .to_string();
+            let body = if let Some(json_file) = params.get("jsonFile").and_then(Value::as_str) {
+                std::fs::read_to_string(json_file)?
+            } else {
+                params
+                    .get("body")
+                    .cloned()
+                    .unwrap_or(Value::Null)
+                    .to_string()
+            };
             state.runtime.mock_registry.upsert(http_method, url, &body);
-            Ok(ok_result(
-                id,
-                json!({ "ok": true, "method": http_method, "url": url }),
-            ))
+            Ok(ok_result(id, json!({ "ok": true, "url": url })))
         }
         "net.unmock" => {
             let url = params
@@ -40,6 +41,7 @@ pub async fn handle_net_request(
             Ok(ok_result(id, json!({ "ok": true, "url": url })))
         }
         "net.log" => {
+            let filter = params.get("filter").and_then(Value::as_str);
             let limit = params
                 .get("limit")
                 .and_then(Value::as_u64)
@@ -54,15 +56,38 @@ pub async fn handle_net_request(
                 .request_store
                 .list_requests(limit, with_body)
                 .map_err(io::Error::other)?;
+            let logs = if let Some(filter) = filter {
+                logs.into_iter()
+                    .filter(|item| item.url.contains(filter))
+                    .collect::<Vec<_>>()
+            } else {
+                logs
+            };
             let logs = logs
                 .into_iter()
                 .map(|item| {
-                    json!({
-                        "method": item.method,
-                        "url": item.url,
-                        "reqBody": item.req_body,
-                        "resBody": item.res_body,
-                    })
+                    let mut entry = serde_json::Map::from_iter([
+                        ("method".to_string(), Value::String(item.method)),
+                        ("url".to_string(), Value::String(item.url)),
+                        (
+                            "status".to_string(),
+                            item.status.map(Value::from).unwrap_or(Value::Null),
+                        ),
+                        ("ts".to_string(), json!(item.ts)),
+                        ("mocked".to_string(), json!(item.mocked)),
+                        ("duration".to_string(), Value::Null),
+                    ]);
+                    if with_body {
+                        entry.insert(
+                            "req_body".to_string(),
+                            item.req_body.map(Value::String).unwrap_or(Value::Null),
+                        );
+                        entry.insert(
+                            "res_body".to_string(),
+                            item.res_body.map(Value::String).unwrap_or(Value::Null),
+                        );
+                    }
+                    Value::Object(entry)
                 })
                 .collect::<Vec<_>>();
 
@@ -88,17 +113,44 @@ pub async fn handle_net_request(
                 .get("https")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
+            let ca_path = if https {
+                let cert_path = crate::ca::ensure_ca_cert(&state.paths.ca_dir)?;
+                let key_path = state.paths.ca_dir.join("key.pem");
+                state.runtime.proxy.configure_https(&cert_path, &key_path)?;
+                Some(cert_path)
+            } else {
+                state.runtime.proxy.disable_https();
+                None
+            };
+            if state.runtime.proxy.is_running() {
+                state.runtime.proxy.stop()?;
+            }
             let bound_port = state.runtime.proxy.start(port)?;
             Ok(ok_result(
                 id,
-                json!({ "ok": true, "port": bound_port, "https": https }),
+                json!({
+                    "ok": true,
+                    "port": bound_port,
+                    "https": https,
+                    "caPath": ca_path.map(|path| path.display().to_string()),
+                }),
             ))
         }
         "net.stop" => {
             state.runtime.proxy.stop()?;
             Ok(ok_result(id, json!({ "ok": true })))
         }
-        "net.install-ca" => Ok(ok_result(id, json!({ "ok": true }))),
+        "net.install-ca" => {
+            let cert_file = crate::ca::ensure_ca_cert(&state.paths.ca_dir)?;
+            crate::ca::install_ca_cert(&cert_file)?;
+            Ok(ok_result(
+                id,
+                json!({
+                    "ok": true,
+                    "certFile": cert_file.display().to_string(),
+                }),
+            ))
+        }
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!("unsupported net method: {method}"),

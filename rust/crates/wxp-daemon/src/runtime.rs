@@ -143,6 +143,10 @@ impl DaemonRuntime {
     }
 
     fn from_request_store(saved: DaemonState, request_store: StoreWriter) -> Self {
+        let mock_registry = MockRegistry::default();
+        let mut proxy = LocalProxy::default();
+        proxy.attach_runtime(request_store.clone(), mock_registry.clone());
+
         Self {
             saved,
             connection: None,
@@ -150,8 +154,8 @@ impl DaemonRuntime {
             snapshot_version: 0,
             snapshot_refs: HashMap::new(),
             request_store,
-            mock_registry: MockRegistry::default(),
-            proxy: LocalProxy::default(),
+            mock_registry,
+            proxy,
         }
     }
 }
