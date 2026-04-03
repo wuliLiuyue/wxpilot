@@ -58,7 +58,7 @@ async fn route_and_element_actions_forward_to_automator() {
 
             let response = match method {
                 "App.getCurrentPage" => {
-                    json!({ "id": id, "result": { "pageId": 1, "path": "pages/index/index", "query": {} } })
+                    json!({ "id": id, "result": { "pageId": 1, "path": "pages/index/index", "query": { "from": "test" } } })
                 }
                 "Page.getElement" => {
                     json!({
@@ -79,9 +79,17 @@ async fn route_and_element_actions_forward_to_automator() {
                         }
                     })
                 }
-                "Element.tap" | "Element.callFunction" => {
+                "Element.tap" => {
                     assert_eq!(request["params"]["nodeId"], "node-element-1");
                     json!({ "id": id, "result": { "ok": true } })
+                }
+                "Element.callFunction" => {
+                    assert_eq!(request["params"]["nodeId"], "node-element-1");
+                    if request["params"]["functionName"] == "scroll-view.scrollTop" {
+                        json!({ "id": id, "result": 120 })
+                    } else {
+                        json!({ "id": id, "result": { "ok": true } })
+                    }
                 }
                 _ => json!({ "id": id, "result": { "ok": true } }),
             };
@@ -166,13 +174,58 @@ async fn route_and_element_actions_forward_to_automator() {
             .any(|payload| payload.contains("\"method\":\"Element.tap\"")),
         "tap should call Element.tap"
     );
-    assert!(
-        payloads
-            .iter()
-            .any(|payload| payload.contains("input.input")
-                || payload.contains("scroll-view.scrollTo")),
-        "type/scroll should call Element.callFunction"
+    let payloads = payloads
+        .iter()
+        .filter_map(|payload| serde_json::from_str::<Value>(payload).ok())
+        .collect::<Vec<_>>();
+
+    let goto_payload = payloads
+        .iter()
+        .find(|payload| payload["method"] == "App.callWxMethod"
+            && payload["params"]["method"] == "navigateTo")
+        .expect("goto payload");
+    assert_eq!(goto_payload["params"]["args"], json!([{ "url": "/pages/detail/index" }]));
+
+    let back_payload = payloads
+        .iter()
+        .find(|payload| payload["method"] == "App.callWxMethod"
+            && payload["params"]["method"] == "navigateBack")
+        .expect("back payload");
+    assert_eq!(back_payload["params"]["args"], json!([]));
+
+    let reload_payload = payloads
+        .iter()
+        .find(|payload| payload["method"] == "App.callWxMethod"
+            && payload["params"]["method"] == "reLaunch")
+        .expect("reload payload");
+    assert_eq!(
+        reload_payload["params"]["args"],
+        json!([{ "url": "/pages/index/index?from=test" }])
     );
+
+    let call_function_payloads = payloads
+        .iter()
+        .filter(|payload| payload["method"] == "Element.callFunction")
+        .collect::<Vec<_>>();
+    assert_eq!(call_function_payloads.len(), 3, "should record type and scroll calls");
+    assert_eq!(call_function_payloads[0]["params"]["functionName"], "input.input");
+    assert_eq!(
+        call_function_payloads[0]["params"]["args"],
+        json!(["13800138000"])
+    );
+    assert_eq!(
+        call_function_payloads[1]["params"]["args"],
+        json!([])
+    );
+    assert_eq!(
+        call_function_payloads[1]["params"]["functionName"],
+        "scroll-view.scrollTop"
+    );
+    assert_eq!(
+        call_function_payloads[2]["params"]["functionName"],
+        "scroll-view.scrollTo"
+    );
+    assert_eq!(call_function_payloads[2]["params"]["args"], json!([0, 420.0]));
 }
 
 #[tokio::test]
