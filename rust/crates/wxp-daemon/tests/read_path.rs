@@ -320,6 +320,7 @@ async fn start_retries_with_proxy_after_failed_to_fetch_error() {
     );
 }
 
+
 #[test]
 fn status_does_not_report_connected_after_restart_without_live_connection() {
     let paths = test_paths("restart-status");
@@ -402,6 +403,81 @@ async fn state_failure_clears_connected_status_after_socket_closes() {
     .await
     .expect_err("state should fail after connection closes");
     assert_eq!(error.kind(), std::io::ErrorKind::Other);
+
+    let status = dispatch_local_request(
+        &state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "status",
+            "params": {},
+        }),
+    )
+    .expect("status");
+    assert_eq!(status["result"]["connected"], false);
+
+    let saved = fs::read_to_string(&paths.state_file).expect("read state file");
+    let saved: Value = serde_json::from_str(&saved).expect("parse state file");
+    assert_eq!(saved["connected"], false);
+}
+
+#[tokio::test]
+async fn disconnect_clears_runtime_connection_and_status() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+
+    tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.expect("accept");
+        let mut ws = accept_async(stream).await.expect("ws accept");
+        if let Some(message) = ws.next().await {
+            let payload = message.expect("message").into_text().expect("text");
+            let request: Value = serde_json::from_str(&payload).expect("request json");
+            let id = request.get("id").cloned().unwrap_or(Value::Null);
+            assert_eq!(request["method"], "App.getCurrentPage");
+            ws.send(Message::Text(
+                json!({
+                    "id": id,
+                    "result": { "pageId": 1, "path": "pages/index/index", "query": {} }
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .expect("send");
+        }
+    });
+
+    let paths = test_paths("disconnect-rpc");
+    let mut state = ServerState::new(paths.clone()).expect("server state");
+    state
+        .runtime
+        .set_ws_endpoint_for_test(format!("ws://{addr}"));
+
+    let connect = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "connect",
+            "params": {},
+        }),
+    )
+    .await
+    .expect("connect");
+    assert_eq!(connect["result"]["ok"], true);
+
+    let disconnected = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "disconnect",
+            "params": {},
+        }),
+    )
+    .await
+    .expect("disconnect");
+    assert_eq!(disconnected["result"]["ok"], true);
 
     let status = dispatch_local_request(
         &state,

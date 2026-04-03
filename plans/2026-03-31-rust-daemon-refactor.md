@@ -10,6 +10,14 @@
 
 ---
 
+## Status Update
+
+**Last Updated:** 2026-04-03
+
+- 这份计划中的主体工作已经在仓库代码中落地，不再适合作为逐项打勾的实时进度来源。
+- 已验证落地的内容包括：contracts 冻结、CLI 双 daemon 选择、Rust workspace/crate 骨架、基础 contract tests、root `pnpm lint` / `pnpm build` / `pnpm test` 通过。
+- 后续阶段性收口以 `plans/2026-04-01-rust-daemon-native-realignment.md` 与 `plans/2026-04-02-rust-daemon-gap-closure.md` 为准；本文件保留为“首版总实现计划”。
+
 ## Scope Decision
 
 本技术方案同时覆盖 CLI、daemon runtime、automator、snapshot/ref、proxy/store、灰度发布，理论上可拆成多份子计划；但这些子系统存在明确的主依赖链：

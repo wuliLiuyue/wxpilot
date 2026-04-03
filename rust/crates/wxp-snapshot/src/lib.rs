@@ -39,7 +39,15 @@ pub struct RenderResult {
 }
 
 const INTERACTIVE_TAGS: &[&str] = &[
-    "button", "input", "textarea", "picker", "switch", "slider", "checkbox", "radio",
+    "button",
+    "input",
+    "textarea",
+    "picker",
+    "switch",
+    "slider",
+    "checkbox",
+    "radio",
+    "scroll-view",
 ];
 
 const INTERACTIVE_ATTRS: &[&str] = &[
@@ -664,4 +672,39 @@ fn matches_query(node: &ElementNode, normalized_query: &str) -> bool {
 
 fn truncate_text(value: &str, limit: usize) -> String {
     value.chars().take(limit).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SAMPLE_WXML: &str = r#"
+<view class="container">
+  <button class="btn-submit" bindtap="onSubmit">提交订单</button>
+  <input placeholder="手机号" />
+  <scroll-view class="product-list">
+    <view class="card">可颂 ¥19.00</view>
+    <view class="card">蛋糕 ¥199.00</view>
+  </scroll-view>
+</view>
+"#;
+
+    #[test]
+    fn scroll_view_is_treated_as_interactive_and_receives_ref() {
+        let tree = parse_wxml(SAMPLE_WXML, 20, None);
+        let container = &tree[0];
+        let scroll_view = container
+            .children
+            .iter()
+            .find(|node| node.tag == "scroll-view")
+            .expect("scroll-view node");
+        assert!(scroll_view.interactive);
+
+        let refs = container
+            .children
+            .iter()
+            .filter_map(|node| node.ref_id)
+            .collect::<Vec<_>>();
+        assert_eq!(refs, vec![1, 2, 3]);
+    }
 }

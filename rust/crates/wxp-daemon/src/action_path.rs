@@ -46,7 +46,7 @@ async fn goto(state: &mut ServerState, id: Value, params: &Value) -> io::Result<
             "App.callWxMethod",
             json!({
                 "method": normalize_route_action("goto"),
-                "args": { "url": route },
+                "args": [{ "url": route }],
             }),
         )
         .await?;
@@ -63,7 +63,7 @@ async fn back(state: &mut ServerState, id: Value) -> io::Result<Value> {
             "App.callWxMethod",
             json!({
                 "method": normalize_route_action("back"),
-                "args": {},
+                "args": [],
             }),
         )
         .await?;
@@ -78,6 +78,7 @@ async fn reload(state: &mut ServerState, id: Value) -> io::Result<Value> {
         .get("path")
         .and_then(Value::as_str)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "page_path_missing"))?;
+    let route = normalize_reload_route(page_path, current_page.get("query"));
     state
         .call_automator(
             &id,
@@ -85,13 +86,13 @@ async fn reload(state: &mut ServerState, id: Value) -> io::Result<Value> {
             "App.callWxMethod",
             json!({
                 "method": normalize_route_action("reload"),
-                "args": { "url": page_path },
+                "args": [{ "url": route }],
             }),
         )
         .await?;
     state.runtime.invalidate_refs();
 
-    Ok(ok_result(id, json!({ "ok": true, "route": page_path })))
+    Ok(ok_result(id, json!({ "ok": true, "route": route })))
 }
 
 async fn tap(state: &mut ServerState, id: Value, params: &Value) -> io::Result<Value> {
@@ -133,8 +134,8 @@ async fn type_text(state: &mut ServerState, id: Value, params: &Value) -> io::Re
             )
         })
         .unwrap_or("input.input");
-    element.insert("name".into(), Value::String(call_name.to_string()));
-    element.insert("args".into(), json!({ "value": text }));
+    element.insert("functionName".into(), Value::String(call_name.to_string()));
+    element.insert("args".into(), json!([text]));
     state
         .call_automator(&id, "type", "Element.callFunction", Value::Object(element))
         .await?;
@@ -151,18 +152,37 @@ async fn scroll(state: &mut ServerState, id: Value, params: &Value) -> io::Resul
         .get("direction")
         .and_then(Value::as_str)
         .unwrap_or("down");
-    let mut element = resolve_element_request(state, &id, ref_id).await?;
-    element.insert(
-        "name".into(),
+    let element = resolve_element_request(state, &id, ref_id).await?;
+    let mut scroll_top_request = element.clone();
+    scroll_top_request.insert(
+        "functionName".into(),
+        Value::String("scroll-view.scrollTop".to_string()),
+    );
+    scroll_top_request.insert("args".into(), json!([]));
+    let current_top = state
+        .call_automator(
+            &id,
+            "scroll_top",
+            "Element.callFunction",
+            Value::Object(scroll_top_request),
+        )
+        .await
+        .ok()
+        .and_then(as_scroll_top)
+        .unwrap_or(0.0);
+    let delta = if direction == "up" { -300.0 } else { 300.0 };
+    let mut scroll_request = element;
+    scroll_request.insert(
+        "functionName".into(),
         Value::String("scroll-view.scrollTo".to_string()),
     );
-    element.insert("args".into(), json!({ "direction": direction }));
+    scroll_request.insert("args".into(), json!([0, current_top + delta]));
     state
         .call_automator(
             &id,
             "scroll",
             "Element.callFunction",
-            Value::Object(element),
+            Value::Object(scroll_request),
         )
         .await?;
 
@@ -306,6 +326,45 @@ fn normalize_function_declaration(js: &str) -> String {
     } else {
         format!("function() {{ return ({}); }}", js)
     }
+}
+
+fn normalize_reload_route(page_path: &str, query: Option<&Value>) -> String {
+    let mut route = if page_path.starts_with('/') {
+        page_path.to_string()
+    } else {
+        format!("/{page_path}")
+    };
+
+    if let Some(query) = query.and_then(Value::as_object) {
+        let pairs = query
+            .iter()
+            .map(|(key, value)| {
+                let value = value
+                    .as_str()
+                    .map(str::to_string)
+                    .unwrap_or_else(|| value.to_string());
+                format!("{key}={value}")
+            })
+            .collect::<Vec<_>>();
+        if !pairs.is_empty() {
+            route.push('?');
+            route.push_str(&pairs.join("&"));
+        }
+    }
+
+    route
+}
+
+fn as_scroll_top(value: Value) -> Option<f64> {
+    value
+        .as_f64()
+        .or_else(|| value.as_i64().map(|value| value as f64))
+        .or_else(|| value.as_u64().map(|value| value as f64))
+        .or_else(|| {
+            value
+                .as_str()
+                .and_then(|value| value.trim().parse::<f64>().ok())
+        })
 }
 
 fn ok_result(id: Value, result: Value) -> Value {
