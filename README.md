@@ -155,20 +155,3 @@ wxpilot daemon restart
 2. 若忘记启动代理就执行了 `wxpilot start`，daemon 会自动检测并启动 HTTP 模式代理后重试
 3. `net install-ca` 安装后必须**完全重启**开发者工具才生效
 4. HTTP 模式下 HTTPS 请求透明隧道放行（不记录）；要记录 HTTPS 流量必须用 `--https` 模式
-
-## Rust Daemon Native Rollout
-
-1. 本地真实回归项目：
-   `/path/to/miniprogram/dist`
-2. 推荐回归命令：
-   - `node packages/cli/dist/index.js status --json`
-   - `node packages/cli/dist/index.js start /path/to/miniprogram/dist --json`
-   - `node packages/cli/dist/index.js connect --json`
-   - `node packages/cli/dist/index.js view --json`
-   - `node packages/cli/dist/index.js find 余额 --all --json`
-   - `node packages/cli/dist/index.js state --json`
-   - `node packages/cli/dist/index.js state cardMap.vipCardPrice --json`
-   - `node packages/cli/dist/index.js shot --json`
-   - `node packages/cli/dist/index.js run "1+1" --json`
-   - `node packages/cli/dist/index.js wx getStorageSync foo --json`
-   - `node packages/cli/dist/index.js net install-ca --json`
