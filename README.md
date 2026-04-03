@@ -104,6 +104,8 @@ wxpilot state [path]             # 指定子路径，如 "cart.items"
 wxpilot state --full             # 完整页面 data
 wxpilot shot [path]              # 截图，保存文件并返回路径
 wxpilot shot [path] --base64     # 截图并附带 base64
+wxpilot run <js>                 # 返回脚本执行结果
+wxpilot wx <method> [args...]    # 返回 wx 方法结果
 ```
 
 ### 网络代理
@@ -158,7 +160,7 @@ wxpilot daemon restart
 
 1. CLI 默认连接 Rust daemon；仅当用户显式指定 `--daemon-kind ts` 时才连接 TS daemon，不再自动回退。
 2. Rust daemon 与 TS daemon 相互独立，Rust 运行时内部不得桥接到 TS daemon。
-3. 当前已完成的原生闭环包括 `health/version/capabilities/status/start/connect/state/view/find/wait/read/assert`，以及最小 `goto/back/reload/tap/type/scroll/net.*` 路由。
+3. 当前已完成的原生闭环包括 `health/version/capabilities/status/start/connect/disconnect`、`view/find/wait/read/assert/state`、`goto/back/reload/tap/type/scroll/shot/run/wx` 与 `net.start/net.stop/net.log/net.mock/net.unmock/net.clear/net.install-ca`。
 4. 本地真实回归项目：
    `/Users/liaochengxing/Documents/workspace/frontend/fe-casamiel-miniprogram/main/dist`
 5. 推荐回归命令：
@@ -168,4 +170,9 @@ wxpilot daemon restart
    - `node packages/cli/dist/index.js view --json`
    - `node packages/cli/dist/index.js find 余额 --all --json`
    - `node packages/cli/dist/index.js state --json`
+   - `node packages/cli/dist/index.js state cardMap.vipCardPrice --json`
+   - `node packages/cli/dist/index.js shot --json`
+   - `node packages/cli/dist/index.js run "1+1" --json`
+   - `node packages/cli/dist/index.js wx getStorageSync foo --json`
+   - `node packages/cli/dist/index.js net install-ca --json`
 6. 执行 `pnpm test` 前需确保当前 Node 版本与 TS daemon 的 `better-sqlite3` 二进制兼容，否则 Vitest 会在 TS store 测试阶段提前失败。

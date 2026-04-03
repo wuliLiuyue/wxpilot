@@ -3,6 +3,7 @@ import path from 'path'
 import readline from 'readline'
 import { Command } from 'commander'
 import { call, setPreferredDaemonKind, stopDaemon, type DaemonKind } from './client.js'
+import { buildNetMockParams } from './net-mock.js'
 import { printOk, printErr, printRefExpired, setJsonMode, setVerboseMode } from './output.js'
 
 const program = new Command()
@@ -351,8 +352,9 @@ net
 net
   .command('mock <url> <jsonFile>')
   .description('添加 mock 规则')
-  .action(async (url: string, jsonFile: string) => {
-    await run('net.mock', { url, jsonFile })
+  .option('--method <method>', 'HTTP 方法', 'GET')
+  .action(async (url: string, jsonFile: string, opts: { method?: string }) => {
+    await run('net.mock', buildNetMockParams(url, jsonFile, opts))
   })
 
 net

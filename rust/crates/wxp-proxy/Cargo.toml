@@ -5,3 +5,11 @@ edition = "2021"
 
 [lib]
 path = "src/lib.rs"
+
+[dependencies]
+rcgen = { version = "0.13", features = ["x509-parser"] }
+rustls = "0.21"
+rustls-pemfile = "1"
+serde_json = "1"
+webpki-roots = "0.25"
+wxp-store = { path = "../wxp-store" }

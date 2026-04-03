@@ -1,4 +1,7 @@
-use std::io;
+use std::{
+    io,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use serde_json::{json, Value};
 use wxp_automator_client::normalize_input_call;
@@ -174,25 +177,23 @@ async fn shot(state: &mut ServerState, id: Value, params: &Value) -> io::Result<
         .get("base64")
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    let save_path = params
+        .get("path")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(default_screenshot_path);
     let mut request = serde_json::Map::new();
     request.insert("base64".into(), Value::Bool(base64));
-    if let Some(path) = params.get("path").and_then(Value::as_str) {
-        request.insert("path".into(), Value::String(path.to_string()));
-    }
+    request.insert("path".into(), Value::String(save_path.clone()));
 
     let result = state
-        .call_automator(
-            &id,
-            "shot",
-            "App.captureScreenshot",
-            Value::Object(request),
-        )
+        .call_automator(&id, "shot", "App.captureScreenshot", Value::Object(request))
         .await?;
 
     let path = result
         .get("path")
         .cloned()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "screenshot_path_missing"))?;
+        .unwrap_or(Value::String(save_path));
     let mut response = serde_json::Map::new();
     response.insert("ok".into(), Value::Bool(true));
     response.insert("path".into(), path);
@@ -201,6 +202,17 @@ async fn shot(state: &mut ServerState, id: Value, params: &Value) -> io::Result<
     }
 
     Ok(ok_result(id, Value::Object(response)))
+}
+
+fn default_screenshot_path() -> String {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+    std::env::temp_dir()
+        .join(format!("wxpilot-shot-{millis}.png"))
+        .display()
+        .to_string()
 }
 
 async fn run_script(state: &mut ServerState, id: Value, params: &Value) -> io::Result<Value> {

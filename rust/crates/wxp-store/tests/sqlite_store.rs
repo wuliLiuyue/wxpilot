@@ -24,6 +24,28 @@ fn request_logs_are_truncated_at_2000_chars() {
 }
 
 #[test]
+fn request_log_metadata_is_persisted() {
+    let writer = StoreWriter::memory().unwrap();
+    writer
+        .insert_request(RequestLog {
+            method: "POST".into(),
+            url: "https://wxpilot.test/meta".into(),
+            req_body: Some("{\"hello\":\"world\"}".into()),
+            res_body: Some("{\"ok\":true}".into()),
+            status: Some(201),
+            ts: 1_775_196_000_123,
+            mocked: true,
+        })
+        .unwrap();
+
+    let stored = writer.list_requests(20, true).unwrap();
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0].status, Some(201));
+    assert_eq!(stored[0].ts, 1_775_196_000_123);
+    assert!(stored[0].mocked);
+}
+
+#[test]
 fn requests_are_read_back_in_reverse_insert_order_and_can_be_cleared() {
     let writer = StoreWriter::memory().unwrap();
     writer
