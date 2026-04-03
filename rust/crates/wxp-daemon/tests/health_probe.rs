@@ -17,6 +17,20 @@ fn health_version_capabilities_are_available() {
 }
 
 #[test]
+fn health_version_capabilities_publish_public_method_manifest() {
+    let capabilities = handle_probe("capabilities");
+    let methods = capabilities["methods"].as_array().expect("methods array");
+
+    assert_eq!(capabilities["status"], "ok");
+    assert_eq!(capabilities["daemonKind"], "rust");
+    assert!(methods.iter().any(|item| item == "state"));
+    assert!(methods.iter().any(|item| item == "shot"));
+    assert!(methods.iter().any(|item| item == "run"));
+    assert!(methods.iter().any(|item| item == "wx"));
+    assert!(methods.iter().any(|item| item == "net.log"));
+}
+
+#[test]
 fn bootstrap_guard_defaults_to_allow_for_current_rollout() {
     let decision = run_bootstrap_guard(&AllowAllBootstrapGuard);
 

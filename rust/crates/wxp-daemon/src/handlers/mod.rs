@@ -12,9 +12,14 @@ pub fn handle_probe(method: &str) -> Value {
         }),
         "capabilities" => json!({
             "status": "ok",
+            "daemonKind": "rust",
+            "methods": crate::PUBLIC_METHODS,
             "find": true,
             "view": true,
             "state": true,
+            "shot": true,
+            "run": true,
+            "wx": true,
         }),
         _ => json!({ "status": "error" }),
     }

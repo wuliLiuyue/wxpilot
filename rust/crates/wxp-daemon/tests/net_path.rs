@@ -31,18 +31,24 @@ fn test_paths(name: &str) -> RuntimePaths {
 }
 
 #[tokio::test]
-async fn net_mock_log_and_clear_requests_work() {
-    let mut state = ServerState::new(test_paths("net")).expect("server state");
-    let oversized = "x".repeat(2100);
+async fn net_log_mock_and_install_ca_match_cli_contract() {
+    let paths = test_paths("net-contract");
+    let json_file = paths.root_dir.join("mock.json");
+    fs::write(&json_file, r#"{"ok":true}"#).expect("write mock json");
+
+    let mut state = ServerState::new(paths.clone()).expect("server state");
     state
         .runtime
         .request_store
-        .insert_request(RequestLog::new(
-            "GET",
-            "https://wxpilot.test/api",
-            Some(oversized),
-            None,
-        ))
+        .insert_request(RequestLog {
+            method: "GET".into(),
+            url: "https://wxpilot.test/api".into(),
+            req_body: Some("{\"request\":true}".to_string()),
+            res_body: Some("{\"response\":true}".to_string()),
+            status: Some(204),
+            ts: 1_775_196_001_234,
+            mocked: true,
+        })
         .expect("insert request log");
 
     let mock = dispatch_request(
@@ -52,9 +58,8 @@ async fn net_mock_log_and_clear_requests_work() {
             "id": 1,
             "method": "net.mock",
             "params": {
-                "method": "GET",
                 "url": "https://wxpilot.test/api",
-                "body": { "ok": true }
+                "jsonFile": json_file
             },
         }),
     )
@@ -74,6 +79,7 @@ async fn net_mock_log_and_clear_requests_work() {
             "id": 2,
             "method": "net.log",
             "params": {
+                "filter": "wxpilot.test",
                 "limit": 20,
                 "withBody": true
             },
@@ -82,19 +88,82 @@ async fn net_mock_log_and_clear_requests_work() {
     .await
     .expect("net log");
     assert_eq!(logs["result"]["ok"], true);
+    assert_eq!(logs["result"]["logs"][0]["url"], "https://wxpilot.test/api");
+    assert_eq!(logs["result"]["logs"][0]["method"], "GET");
+    assert_eq!(logs["result"]["logs"][0]["status"], 204);
+    assert_eq!(logs["result"]["logs"][0]["ts"], 1_775_196_001_234_u64);
+    assert_eq!(logs["result"]["logs"][0]["mocked"], true);
     assert_eq!(
-        logs["result"]["logs"][0]["reqBody"]
-            .as_str()
-            .expect("req body")
-            .len(),
-        2001
+        logs["result"]["logs"][0]["req_body"].as_str(),
+        Some("{\"request\":true}")
     );
+    assert_eq!(
+        logs["result"]["logs"][0]["res_body"].as_str(),
+        Some("{\"response\":true}")
+    );
+
+    let started = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "net.start",
+            "params": {
+                "port": 0,
+                "https": true
+            },
+        }),
+    )
+    .await
+    .expect("net start https");
+    let ca_path = started["result"]["caPath"]
+        .as_str()
+        .expect("ca path")
+        .to_string();
+    assert!(ca_path.ends_with("cert.pem"));
+    assert!(PathBuf::from(&ca_path).exists());
+
+    let installed = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "net.install-ca",
+            "params": {},
+        }),
+    )
+    .await
+    .expect("install ca");
+    assert_eq!(installed["result"]["ok"], true);
+    assert_eq!(
+        installed["result"]["certFile"].as_str(),
+        Some(ca_path.as_str())
+    );
+}
+
+#[tokio::test]
+async fn net_unmock_and_clear_requests_work() {
+    let mut state = ServerState::new(test_paths("net-clear")).expect("server state");
+    state
+        .runtime
+        .request_store
+        .insert_request(RequestLog::new(
+            "GET",
+            "https://wxpilot.test/api",
+            Some("{\"request\":true}".to_string()),
+            None,
+        ))
+        .expect("insert request log");
+    state
+        .runtime
+        .mock_registry
+        .upsert("GET", "https://wxpilot.test/api", "{\"ok\":true}");
 
     let unmock = dispatch_request(
         &mut state,
         &json!({
             "jsonrpc": "2.0",
-            "id": 3,
+            "id": 5,
             "method": "net.unmock",
             "params": {
                 "url": "https://wxpilot.test/api"
@@ -114,7 +183,7 @@ async fn net_mock_log_and_clear_requests_work() {
         &mut state,
         &json!({
             "jsonrpc": "2.0",
-            "id": 4,
+            "id": 6,
             "method": "net.clear",
             "params": {},
         }),
@@ -127,7 +196,7 @@ async fn net_mock_log_and_clear_requests_work() {
         &mut state,
         &json!({
             "jsonrpc": "2.0",
-            "id": 5,
+            "id": 7,
             "method": "net.log",
             "params": {},
         }),

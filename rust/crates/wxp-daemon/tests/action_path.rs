@@ -318,7 +318,11 @@ async fn screenshot_run_and_wx_actions_forward_to_automator() {
         .filter_map(|payload| serde_json::from_str::<Value>(payload).ok())
         .filter(|payload| payload["method"] == "App.callFunction")
         .collect::<Vec<_>>();
-    assert_eq!(call_function_payloads.len(), 2, "should record two run calls");
+    assert_eq!(
+        call_function_payloads.len(),
+        2,
+        "should record two run calls"
+    );
     assert_eq!(
         call_function_payloads[0]["params"]["functionDeclaration"],
         "function() { return (1+1); }"
@@ -326,5 +330,87 @@ async fn screenshot_run_and_wx_actions_forward_to_automator() {
     assert_eq!(
         call_function_payloads[1]["params"]["functionDeclaration"],
         "   function() { return 3; }"
+    );
+}
+
+#[tokio::test]
+async fn shot_without_explicit_path_still_returns_generated_path() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let seen_payloads = Arc::new(Mutex::new(Vec::<String>::new()));
+    let server_payloads = seen_payloads.clone();
+
+    tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.expect("accept");
+        let mut ws = accept_async(stream).await.expect("ws accept");
+        while let Some(message) = ws.next().await {
+            let payload = message.expect("message").into_text().expect("text");
+            server_payloads
+                .lock()
+                .expect("lock payloads")
+                .push(payload.to_string());
+            let request: Value = serde_json::from_str(&payload).expect("request json");
+            let id = request.get("id").cloned().unwrap_or(Value::Null);
+            let method = request["method"].as_str().expect("method");
+
+            let response = match method {
+                "App.getCurrentPage" => {
+                    json!({ "id": id, "result": { "pageId": 1, "path": "pages/index/index", "query": {} } })
+                }
+                "App.captureScreenshot" => {
+                    json!({ "id": id, "result": { "base64": "ZmFrZQ==" } })
+                }
+                _ => json!({ "id": id, "result": {} }),
+            };
+
+            ws.send(Message::Text(response.to_string().into()))
+                .await
+                .expect("send");
+        }
+    });
+
+    let mut state = ServerState::new(test_paths("shot-default-path")).expect("server state");
+    state
+        .runtime
+        .set_ws_endpoint_for_test(format!("ws://{addr}"));
+
+    dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "connect",
+            "params": {},
+        }),
+    )
+    .await
+    .expect("connect");
+
+    let shot = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "shot",
+            "params": {},
+        }),
+    )
+    .await
+    .expect("shot");
+    let generated_path = shot["result"]["path"]
+        .as_str()
+        .expect("generated path")
+        .to_string();
+    assert!(generated_path.ends_with(".png"));
+
+    let payloads = seen_payloads.lock().expect("lock payloads");
+    let screenshot_payload = payloads
+        .iter()
+        .filter_map(|payload| serde_json::from_str::<Value>(payload).ok())
+        .find(|payload| payload["method"] == "App.captureScreenshot")
+        .expect("capture screenshot payload");
+    assert_eq!(
+        screenshot_payload["params"]["path"].as_str(),
+        Some(generated_path.as_str())
     );
 }

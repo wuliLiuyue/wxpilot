@@ -12,11 +12,7 @@ use crate::{
     server::ServerState,
 };
 
-pub async fn handle_state(
-    state: &mut ServerState,
-    id: Value,
-    params: &Value,
-) -> io::Result<Value> {
+pub async fn handle_state(state: &mut ServerState, id: Value, params: &Value) -> io::Result<Value> {
     let data = read_state_data(state, &id).await?;
     let path = params
         .get("path")
