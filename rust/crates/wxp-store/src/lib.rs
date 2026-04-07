@@ -106,6 +106,15 @@ impl StoreWriter {
     }
 
     pub fn list_requests(&self, limit: usize, with_body: bool) -> Result<Vec<RequestLog>> {
+        self.list_requests_filtered(limit, with_body, None)
+    }
+
+    pub fn list_requests_filtered(
+        &self,
+        limit: usize,
+        with_body: bool,
+        filter: Option<&str>,
+    ) -> Result<Vec<RequestLog>> {
         let conn = self.conn.lock().expect("store connection lock poisoned");
         let limit = i64::try_from(limit).map_err(|_| {
             rusqlite::Error::ToSqlConversionFailure(Box::new(io::Error::new(
@@ -113,13 +122,15 @@ impl StoreWriter {
                 "request limit exceeds i64::MAX",
             )))
         })?;
+        let filter = filter.map(str::to_string);
         let mut stmt = conn.prepare(
             "SELECT method, url, req_body, res_body, status, ts, mocked
              FROM requests
+             WHERE (?2 IS NULL OR instr(url, ?2) > 0)
              ORDER BY id DESC
              LIMIT ?1",
         )?;
-        let rows = stmt.query_map(params![limit], |row| {
+        let rows = stmt.query_map(params![limit, filter], |row| {
             let req_body = if with_body { row.get(2)? } else { None };
             let res_body = if with_body { row.get(3)? } else { None };
             let status = row

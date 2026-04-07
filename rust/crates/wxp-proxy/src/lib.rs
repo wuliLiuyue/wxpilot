@@ -433,8 +433,9 @@ fn build_mock_response(payload: &str) -> io::Result<(Vec<u8>, Option<String>, u1
     };
 
     let mut response = format!(
-        "HTTP/1.1 {} OK\r\nContent-Length: {}\r\nConnection: close\r\n",
+        "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nConnection: close\r\n",
         status,
+        reason_phrase_for_status(status as u16),
         body.len()
     );
 
@@ -482,6 +483,11 @@ fn read_http_message(stream: &mut impl Read) -> io::Result<Vec<u8>> {
         .ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "http_headers_incomplete"))?
         + 4;
     let headers = String::from_utf8_lossy(&buffer[..headers_end]);
+    if is_chunked_transfer_encoding(&headers) {
+        read_chunked_message(stream, &mut buffer, headers_end)?;
+        return Ok(buffer);
+    }
+
     let content_length = headers
         .lines()
         .find_map(|line| {
@@ -594,10 +600,13 @@ fn parse_http_response(bytes: &[u8]) -> io::Result<HttpResponse> {
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "status_missing"))?
         .parse::<u16>()
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-    Ok(HttpResponse {
-        status,
-        body: bytes[headers_end + 4..].to_vec(),
-    })
+    let headers = String::from_utf8_lossy(&bytes[..headers_end]);
+    let body = if is_chunked_transfer_encoding(&headers) {
+        decode_chunked_body(&bytes[headers_end + 4..])?
+    } else {
+        bytes[headers_end + 4..].to_vec()
+    };
+    Ok(HttpResponse { status, body })
 }
 
 fn parse_target(scheme: &str, target: &str, host_header: Option<&str>) -> io::Result<Target> {
@@ -716,6 +725,171 @@ fn bytes_to_text(bytes: &[u8]) -> Option<String> {
         None
     } else {
         Some(String::from_utf8_lossy(bytes).to_string())
+    }
+}
+
+fn is_chunked_transfer_encoding(headers: &str) -> bool {
+    headers.lines().any(|line| {
+        let Some((name, value)) = line.split_once(':') else {
+            return false;
+        };
+        name.eq_ignore_ascii_case("Transfer-Encoding")
+            && value
+                .split(',')
+                .any(|item| item.trim().eq_ignore_ascii_case("chunked"))
+    })
+}
+
+fn read_chunked_message(
+    stream: &mut impl Read,
+    buffer: &mut Vec<u8>,
+    headers_end: usize,
+) -> io::Result<()> {
+    let mut cursor = headers_end;
+    let mut chunk = [0_u8; 1024];
+
+    loop {
+        let line_end = loop {
+            if let Some(relative_end) = find_bytes(&buffer[cursor..], b"\r\n") {
+                break cursor + relative_end;
+            }
+            let size = stream.read(&mut chunk)?;
+            if size == 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "chunk_size_incomplete",
+                ));
+            }
+            buffer.extend_from_slice(&chunk[..size]);
+        };
+
+        let chunk_size = std::str::from_utf8(&buffer[cursor..line_end])
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?
+            .split(';')
+            .next()
+            .unwrap_or_default()
+            .trim();
+        let chunk_size = usize::from_str_radix(chunk_size, 16).map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid_chunk_size: {error}"),
+            )
+        })?;
+        if chunk_size == 0 {
+            while !buffer.ends_with(b"\r\n\r\n") {
+                let size = stream.read(&mut chunk)?;
+                if size == 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::UnexpectedEof,
+                        "chunk_trailers_incomplete",
+                    ));
+                }
+                buffer.extend_from_slice(&chunk[..size]);
+            }
+            break;
+        }
+
+        let chunk_end = line_end + 2 + chunk_size + 2;
+        while buffer.len() < chunk_end {
+            let size = stream.read(&mut chunk)?;
+            if size == 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "chunk_body_incomplete",
+                ));
+            }
+            buffer.extend_from_slice(&chunk[..size]);
+        }
+
+        cursor = chunk_end;
+    }
+
+    Ok(())
+}
+
+fn decode_chunked_body(bytes: &[u8]) -> io::Result<Vec<u8>> {
+    let mut decoded = Vec::new();
+    let mut cursor = 0;
+
+    loop {
+        let line_end = find_bytes(&bytes[cursor..], b"\r\n")
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "chunk_size_missing"))?
+            + cursor;
+        let chunk_size = std::str::from_utf8(&bytes[cursor..line_end])
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?
+            .split(';')
+            .next()
+            .unwrap_or_default()
+            .trim();
+        let chunk_size = usize::from_str_radix(chunk_size, 16).map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid_chunk_size: {error}"),
+            )
+        })?;
+        let chunk_start = line_end + 2;
+        let chunk_end = chunk_start + chunk_size;
+        if chunk_end + 2 > bytes.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "chunk_body_truncated",
+            ));
+        }
+
+        if chunk_size == 0 {
+            return Ok(decoded);
+        }
+
+        decoded.extend_from_slice(&bytes[chunk_start..chunk_end]);
+        cursor = chunk_end + 2;
+    }
+}
+
+fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
+fn reason_phrase_for_status(status: u16) -> &'static str {
+    match status {
+        100 => "Continue",
+        101 => "Switching Protocols",
+        102 => "Processing",
+        103 => "Early Hints",
+        200 => "OK",
+        201 => "Created",
+        202 => "Accepted",
+        203 => "Non-Authoritative Information",
+        204 => "No Content",
+        205 => "Reset Content",
+        206 => "Partial Content",
+        300 => "Multiple Choices",
+        301 => "Moved Permanently",
+        302 => "Found",
+        303 => "See Other",
+        304 => "Not Modified",
+        307 => "Temporary Redirect",
+        308 => "Permanent Redirect",
+        400 => "Bad Request",
+        401 => "Unauthorized",
+        403 => "Forbidden",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        408 => "Request Timeout",
+        409 => "Conflict",
+        410 => "Gone",
+        413 => "Content Too Large",
+        415 => "Unsupported Media Type",
+        418 => "I'm a teapot",
+        422 => "Unprocessable Content",
+        429 => "Too Many Requests",
+        500 => "Internal Server Error",
+        501 => "Not Implemented",
+        502 => "Bad Gateway",
+        503 => "Service Unavailable",
+        504 => "Gateway Timeout",
+        _ => "",
     }
 }
 
