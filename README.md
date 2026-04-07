@@ -8,6 +8,18 @@
 npm install -g wxpilot
 ```
 
+## Rust CLI（实验性迁移入口）
+
+本次迭代新增了纯 Rust CLI，可直接在本地构建和运行：
+
+```bash
+cd rust
+cargo build -p wxp-cli --bin wxpilot
+cargo run -p wxp-cli --bin wxpilot -- --help
+```
+
+当前仓库仍保留 TypeScript CLI / daemon 代码，作为迁移期对照实现与契约回归基线；本次迭代不删除 Node 相关代码与工作流。
+
 ## 前置步骤
 
 微信开发者工具需已安装并启动。
