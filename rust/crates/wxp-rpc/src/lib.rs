@@ -1,4 +1,7 @@
 use serde::{Deserialize, Serialize};
+use wxp_common::{
+    ERROR_INTERNAL, ERROR_NOT_CONNECTED, ERROR_NOT_FOUND, ERROR_REF_EXPIRED, ERROR_TIMEOUT,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RpcRequest {
@@ -24,6 +27,24 @@ impl RpcRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct RpcResponse {
+    pub jsonrpc: String,
+    pub id: serde_json::Value,
+    #[serde(default)]
+    pub result: Option<serde_json::Value>,
+    #[serde(default)]
+    pub error: Option<RpcErrorPayload>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RpcErrorPayload {
+    pub code: i32,
+    pub message: String,
+    #[serde(default)]
+    pub data: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct RpcError {
     pub code: i32,
     pub message: &'static str,
@@ -32,35 +53,35 @@ pub struct RpcError {
 impl RpcError {
     pub fn ref_expired() -> Self {
         Self {
-            code: -32000,
+            code: ERROR_REF_EXPIRED,
             message: "ref_expired",
         }
     }
 
     pub fn not_connected() -> Self {
         Self {
-            code: -32001,
+            code: ERROR_NOT_CONNECTED,
             message: "not_connected",
         }
     }
 
     pub fn timeout() -> Self {
         Self {
-            code: -32002,
+            code: ERROR_TIMEOUT,
             message: "timeout",
         }
     }
 
     pub fn not_found() -> Self {
         Self {
-            code: -32003,
+            code: ERROR_NOT_FOUND,
             message: "not_found",
         }
     }
 
     pub fn internal() -> Self {
         Self {
-            code: -32099,
+            code: ERROR_INTERNAL,
             message: "internal",
         }
     }
