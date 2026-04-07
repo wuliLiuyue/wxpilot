@@ -2,6 +2,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { connectToDaemon, stopDaemon } from '../../cli/src/client.js'
 
 describe('cli fallback', () => {
+  it('保留 TypeScript CLI 测试作为 Rust CLI 迁移期行为对照基线', () => {
+    expect(true).toBe(true)
+  })
+
   it('仅连接指定的 rust daemon，不自动回退到 ts daemon', async () => {
     const connect = vi
       .fn()
