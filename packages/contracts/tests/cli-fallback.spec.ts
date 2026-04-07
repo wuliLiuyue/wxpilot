@@ -84,4 +84,33 @@ describe('cli fallback', () => {
     expect(removeRuntimeFile).toHaveBeenCalledTimes(2)
     expect(wait).toHaveBeenCalled()
   })
+
+  it('daemon stop 正常通过 RPC 停止时不应误报 forced', async () => {
+    const rpcStop = vi.fn().mockResolvedValue(undefined)
+    const probe = vi.fn().mockResolvedValue(false)
+    const readPidFile = vi.fn().mockReturnValue(4321)
+    const listProcessIds = vi.fn().mockReturnValue([])
+    const killPid = vi.fn(() => {
+      throw new Error('ESRCH')
+    })
+    const removeRuntimeFile = vi.fn()
+    const wait = vi.fn().mockResolvedValue(undefined)
+
+    const result = await stopDaemon('rust', {
+      rpcStop,
+      probe,
+      readPidFile,
+      listProcessIds,
+      killPid,
+      removeRuntimeFile,
+      wait,
+    })
+
+    expect(result.forced).toBe(false)
+    expect(rpcStop).toHaveBeenCalledTimes(1)
+    expect(killPid).toHaveBeenCalledTimes(1)
+    expect(killPid).toHaveBeenCalledWith(4321)
+    expect(listProcessIds).toHaveBeenCalledWith('rust')
+    expect(removeRuntimeFile).toHaveBeenCalledTimes(2)
+  })
 })

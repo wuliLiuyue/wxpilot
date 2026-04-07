@@ -181,22 +181,28 @@ async fn route_and_element_actions_forward_to_automator() {
 
     let goto_payload = payloads
         .iter()
-        .find(|payload| payload["method"] == "App.callWxMethod"
-            && payload["params"]["method"] == "navigateTo")
+        .find(|payload| {
+            payload["method"] == "App.callWxMethod" && payload["params"]["method"] == "navigateTo"
+        })
         .expect("goto payload");
-    assert_eq!(goto_payload["params"]["args"], json!([{ "url": "/pages/detail/index" }]));
+    assert_eq!(
+        goto_payload["params"]["args"],
+        json!([{ "url": "/pages/detail/index" }])
+    );
 
     let back_payload = payloads
         .iter()
-        .find(|payload| payload["method"] == "App.callWxMethod"
-            && payload["params"]["method"] == "navigateBack")
+        .find(|payload| {
+            payload["method"] == "App.callWxMethod" && payload["params"]["method"] == "navigateBack"
+        })
         .expect("back payload");
     assert_eq!(back_payload["params"]["args"], json!([]));
 
     let reload_payload = payloads
         .iter()
-        .find(|payload| payload["method"] == "App.callWxMethod"
-            && payload["params"]["method"] == "reLaunch")
+        .find(|payload| {
+            payload["method"] == "App.callWxMethod" && payload["params"]["method"] == "reLaunch"
+        })
         .expect("reload payload");
     assert_eq!(
         reload_payload["params"]["args"],
@@ -207,16 +213,20 @@ async fn route_and_element_actions_forward_to_automator() {
         .iter()
         .filter(|payload| payload["method"] == "Element.callFunction")
         .collect::<Vec<_>>();
-    assert_eq!(call_function_payloads.len(), 3, "should record type and scroll calls");
-    assert_eq!(call_function_payloads[0]["params"]["functionName"], "input.input");
+    assert_eq!(
+        call_function_payloads.len(),
+        3,
+        "should record type and scroll calls"
+    );
+    assert_eq!(
+        call_function_payloads[0]["params"]["functionName"],
+        "input.input"
+    );
     assert_eq!(
         call_function_payloads[0]["params"]["args"],
         json!(["13800138000"])
     );
-    assert_eq!(
-        call_function_payloads[1]["params"]["args"],
-        json!([])
-    );
+    assert_eq!(call_function_payloads[1]["params"]["args"], json!([]));
     assert_eq!(
         call_function_payloads[1]["params"]["functionName"],
         "scroll-view.scrollTop"
@@ -225,7 +235,10 @@ async fn route_and_element_actions_forward_to_automator() {
         call_function_payloads[2]["params"]["functionName"],
         "scroll-view.scrollTo"
     );
-    assert_eq!(call_function_payloads[2]["params"]["args"], json!([0, 420.0]));
+    assert_eq!(
+        call_function_payloads[2]["params"]["args"],
+        json!([0, 420.0])
+    );
 }
 
 #[tokio::test]

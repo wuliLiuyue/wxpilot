@@ -191,9 +191,11 @@ export async function stopDaemon(kind: DaemonKind, deps?: Partial<StopDeps>): Pr
     }
   }
 
+  let forced = false
   for (const pid of forcedPids) {
     try {
       killPid(pid)
+      forced = true
     } catch {
       // ignore stale pids
     }
@@ -203,7 +205,7 @@ export async function stopDaemon(kind: DaemonKind, deps?: Partial<StopDeps>): Pr
   removeFile(socketPathFor(kind))
   removeFile(pidPathFor(kind))
 
-  return { forced: forcedPids.size > 0 }
+  return { forced }
 }
 
 async function connectSocket(kind: DaemonKind = activeDaemonKind): Promise<{ socket: net.Socket; daemonKind: DaemonKind }> {

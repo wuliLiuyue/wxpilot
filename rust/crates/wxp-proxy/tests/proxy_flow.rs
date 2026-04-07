@@ -228,7 +228,7 @@ fn http_proxy_returns_mocked_response_and_records_it() {
         .read_to_string(&mut response)
         .expect("read proxy response");
 
-    assert!(response.contains("201 OK"));
+    assert!(response.contains("201 Created"));
     assert!(response.ends_with("{\"ok\":true}"));
     let logs = writer.list_requests(20, true).expect("list requests");
     assert_eq!(logs.len(), 1);
@@ -237,6 +237,61 @@ fn http_proxy_returns_mocked_response_and_records_it() {
     assert!(logs[0].mocked);
     assert!(logs[0].ts > 0);
     assert_eq!(logs[0].res_body.as_deref(), Some("{\"ok\":true}"));
+
+    proxy.stop().expect("stop proxy");
+}
+
+#[test]
+fn http_proxy_forwards_chunked_responses() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind target server");
+    let addr = listener.local_addr().expect("target addr");
+
+    thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept target connection");
+        let mut buffer = [0_u8; 1024];
+        let _ = stream.read(&mut buffer).expect("read request");
+        stream
+            .write_all(
+                b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n",
+            )
+            .expect("write response headers");
+        stream.flush().expect("flush response headers");
+        thread::sleep(std::time::Duration::from_millis(50));
+        stream
+            .write_all(b"5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n")
+            .expect("write chunked body");
+        stream.flush().expect("flush chunked body");
+    });
+
+    let writer = StoreWriter::memory().expect("memory store");
+    let registry = MockRegistry::default();
+    let mut proxy = LocalProxy::default();
+    proxy.attach_runtime(writer.clone(), registry);
+    let port = proxy.start(0).expect("start proxy");
+
+    let mut client = TcpStream::connect(("127.0.0.1", port)).expect("connect to proxy");
+    client
+        .write_all(
+            format!(
+                "GET http://127.0.0.1:{}/chunked HTTP/1.1\r\nHost: 127.0.0.1:{}\r\n\r\n",
+                addr.port(),
+                addr.port()
+            )
+            .as_bytes(),
+        )
+        .expect("write proxy request");
+
+    let mut response = String::new();
+    client
+        .read_to_string(&mut response)
+        .expect("read proxy response");
+
+    assert!(response.contains("Transfer-Encoding: chunked"));
+    assert!(response.ends_with("5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n"));
+    let logs = writer.list_requests(20, true).expect("list requests");
+    assert_eq!(logs.len(), 1);
+    assert_eq!(logs[0].status, Some(200));
+    assert_eq!(logs[0].res_body.as_deref(), Some("hello world"));
 
     proxy.stop().expect("stop proxy");
 }
@@ -430,7 +485,7 @@ fn https_proxy_returns_mocked_response_and_records_it() {
     tls.flush().expect("flush https mock request");
 
     let response = String::from_utf8(read_http_message(&mut tls)).expect("response text");
-    assert!(response.contains("202 OK"));
+    assert!(response.contains("202 Accepted"));
     assert!(response.ends_with("{\"ok\":true}"));
 
     let logs = writer.list_requests(20, true).expect("list requests");
