@@ -320,7 +320,6 @@ async fn start_retries_with_proxy_after_failed_to_fetch_error() {
     );
 }
 
-
 #[test]
 fn status_does_not_report_connected_after_restart_without_live_connection() {
     let paths = test_paths("restart-status");

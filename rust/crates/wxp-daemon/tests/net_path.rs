@@ -210,6 +210,54 @@ async fn net_unmock_and_clear_requests_work() {
 }
 
 #[tokio::test]
+async fn net_log_applies_filter_before_limit() {
+    let mut state = ServerState::new(test_paths("net-filter-before-limit")).expect("server state");
+
+    state
+        .runtime
+        .request_store
+        .insert_request(RequestLog::new(
+            "GET",
+            "https://wxpilot.test/needle",
+            None,
+            None,
+        ))
+        .expect("insert matching request");
+
+    for index in 0..20 {
+        state
+            .runtime
+            .request_store
+            .insert_request(RequestLog::new(
+                "GET",
+                &format!("https://wxpilot.test/other-{index}"),
+                None,
+                None,
+            ))
+            .expect("insert non-matching request");
+    }
+
+    let filtered = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 8,
+            "method": "net.log",
+            "params": {
+                "filter": "needle",
+                "limit": 20
+            },
+        }),
+    )
+    .await
+    .expect("net log filtered");
+
+    let logs = filtered["result"]["logs"].as_array().expect("logs array");
+    assert_eq!(logs.len(), 1);
+    assert_eq!(logs[0]["url"], "https://wxpilot.test/needle");
+}
+
+#[tokio::test]
 async fn net_start_and_stop_manage_proxy_runtime() {
     let mut state = ServerState::new(test_paths("net-start-stop")).expect("server state");
 

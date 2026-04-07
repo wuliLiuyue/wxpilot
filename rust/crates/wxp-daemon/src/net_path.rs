@@ -54,15 +54,8 @@ pub async fn handle_net_request(
             let logs = state
                 .runtime
                 .request_store
-                .list_requests(limit, with_body)
+                .list_requests_filtered(limit, with_body, filter)
                 .map_err(io::Error::other)?;
-            let logs = if let Some(filter) = filter {
-                logs.into_iter()
-                    .filter(|item| item.url.contains(filter))
-                    .collect::<Vec<_>>()
-            } else {
-                logs
-            };
             let logs = logs
                 .into_iter()
                 .map(|item| {
