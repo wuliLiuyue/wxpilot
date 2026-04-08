@@ -37,7 +37,10 @@ fn maps_net_log_with_expected_defaults() {
     .expect("call");
 
     assert_eq!(call.method, "net.log");
-    assert_eq!(call.params, json!({ "filter": null, "limit": 20, "withBody": false }));
+    assert_eq!(
+        call.params,
+        json!({ "filter": null, "limit": 20, "withBody": false })
+    );
 }
 
 #[test]

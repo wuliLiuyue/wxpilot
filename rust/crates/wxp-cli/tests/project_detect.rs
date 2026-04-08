@@ -39,12 +39,17 @@ fn finds_single_dist_candidate_within_two_subdirectory_levels() {
 #[test]
 fn ignores_dist_beyond_two_subdirectory_levels() {
     let temp = tempdir().expect("tempdir");
-    let dist = temp.path().join("demo").join("nested").join("deeper").join("dist");
+    let dist = temp
+        .path()
+        .join("demo")
+        .join("nested")
+        .join("deeper")
+        .join("dist");
     fs::create_dir_all(&dist).expect("mkdir");
     fs::write(dist.join("project.config.json"), "{}").expect("write config");
 
-    let error =
-        detect_or_select_project(temp.path(), false, Selector::fixed(0)).expect_err("too deep should not match");
+    let error = detect_or_select_project(temp.path(), false, Selector::fixed(0))
+        .expect_err("too deep should not match");
     assert!(matches!(error, DetectProjectError::NotFound));
 }
 
@@ -57,9 +62,12 @@ fn returns_explicit_error_when_multiple_candidates_and_not_tty() {
         fs::write(dist.join("project.config.json"), "{}").expect("write config");
     }
 
-    let error =
-        detect_or_select_project(temp.path(), false, Selector::fixed(0)).expect_err("non tty should fail");
-    assert!(matches!(error, DetectProjectError::MultipleCandidates { .. }));
+    let error = detect_or_select_project(temp.path(), false, Selector::fixed(0))
+        .expect_err("non tty should fail");
+    assert!(matches!(
+        error,
+        DetectProjectError::MultipleCandidates { .. }
+    ));
     assert!(error.to_string().contains("未找到唯一项目路径"));
 }
 
@@ -107,7 +115,8 @@ fn returns_selection_failed_when_selector_errors() {
             message: "user cancelled".to_string(),
         })
     });
-    let error = detect_or_select_project(temp.path(), true, selector).expect_err("selection should fail");
+    let error =
+        detect_or_select_project(temp.path(), true, selector).expect_err("selection should fail");
     assert!(matches!(error, DetectProjectError::SelectionFailed { .. }));
     assert!(error.to_string().contains("user cancelled"));
 }
@@ -123,7 +132,8 @@ fn returns_selection_failed_when_selector_returns_out_of_bounds_index() {
     }
 
     let selector = Selector::new(|_| Ok(99));
-    let error = detect_or_select_project(temp.path(), true, selector).expect_err("out of bounds should fail");
+    let error = detect_or_select_project(temp.path(), true, selector)
+        .expect_err("out of bounds should fail");
     assert!(matches!(error, DetectProjectError::SelectionFailed { .. }));
     assert!(error.to_string().contains("invalid index"));
 }

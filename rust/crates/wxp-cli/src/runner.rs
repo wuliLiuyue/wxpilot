@@ -11,9 +11,7 @@ use serde_json::{json, Map, Value};
 use wxp_common::{DAEMON_KIND, ERROR_REF_EXPIRED, RUST_PID_FILE, RUST_SOCKET_FILE};
 
 use crate::command::CliCommand;
-use crate::daemon_client::{
-    connect_to_daemon, stop_daemon, ConnectDeps, ProbeResult, StopDeps,
-};
+use crate::daemon_client::{connect_to_daemon, stop_daemon, ConnectDeps, ProbeResult, StopDeps};
 use crate::error::CliError;
 use crate::project_detect::{detect_or_select_project, Selector};
 use crate::rpc_client::call_with_timeout;
@@ -34,9 +32,9 @@ pub fn build_rpc_call(command: &CliCommand) -> Result<RpcCall, CliError> {
             auto_port,
             timeout_ms,
         } => {
-            let project_path = project_path
-                .clone()
-                .ok_or_else(|| CliError::Message("start command requires resolved project path".into()))?;
+            let project_path = project_path.clone().ok_or_else(|| {
+                CliError::Message("start command requires resolved project path".into())
+            })?;
             let mut params = Map::new();
             params.insert(String::from("projectPath"), Value::String(project_path));
             if let Some(cli_path) = cli_path {
@@ -230,7 +228,6 @@ pub fn execute(command: CliCommand) -> Result<Value, CliError> {
                 "ok": true,
                 "daemonKind": DAEMON_KIND,
                 "forced": result.forced,
-                "killedPids": result.killed_pids,
             }))
         }
         CliCommand::DaemonRestart => {
@@ -279,9 +276,13 @@ fn prepared_command(command: CliCommand) -> Result<CliCommand, CliError> {
 fn execute_rpc(command: CliCommand) -> Result<Value, CliError> {
     let call = build_rpc_call(&command)?;
     let probe = ensure_daemon_available()?;
-    let response =
-        call_with_timeout(&probe.socket_path, call.method, call.params, call.timeout_ms)
-            .map_err(map_daemon_error)?;
+    let response = call_with_timeout(
+        &probe.socket_path,
+        call.method,
+        call.params,
+        call.timeout_ms,
+    )
+    .map_err(map_daemon_error)?;
 
     if let Some(error) = response.error {
         if error.code == ERROR_REF_EXPIRED {
@@ -372,7 +373,10 @@ fn inject_daemon_kind(method: &str, response: Value) -> Value {
     match response {
         Value::Object(mut object) => {
             if !object.contains_key("daemonKind") {
-                object.insert(String::from("daemonKind"), Value::String(String::from(DAEMON_KIND)));
+                object.insert(
+                    String::from("daemonKind"),
+                    Value::String(String::from(DAEMON_KIND)),
+                );
             }
             Value::Object(object)
         }
@@ -388,33 +392,36 @@ fn resolve_project_path() -> Result<String, CliError> {
         .map_err(|error| CliError::Message(error.to_string()))
 }
 
-fn prompt_for_project_selection(candidates: &[PathBuf]) -> Result<usize, crate::project_detect::DetectProjectError> {
+fn prompt_for_project_selection(
+    candidates: &[PathBuf],
+) -> Result<usize, crate::project_detect::DetectProjectError> {
     println!("找到多个候选项目：");
     for (index, candidate) in candidates.iter().enumerate() {
         println!("  {}. {}", index + 1, candidate.display());
     }
     print!("请选择 (输入序号): ");
-    io::stdout()
-        .flush()
-        .map_err(|error| crate::project_detect::DetectProjectError::SelectionFailed {
+    io::stdout().flush().map_err(|error| {
+        crate::project_detect::DetectProjectError::SelectionFailed {
             message: error.to_string(),
-        })?;
+        }
+    })?;
 
     let mut answer = String::new();
-    io::stdin()
-        .read_line(&mut answer)
-        .map_err(|error| crate::project_detect::DetectProjectError::SelectionFailed {
+    io::stdin().read_line(&mut answer).map_err(|error| {
+        crate::project_detect::DetectProjectError::SelectionFailed {
             message: error.to_string(),
-        })?;
-    let index = answer
-        .trim()
-        .parse::<usize>()
-        .map_err(|error| crate::project_detect::DetectProjectError::SelectionFailed {
+        }
+    })?;
+    let index = answer.trim().parse::<usize>().map_err(|error| {
+        crate::project_detect::DetectProjectError::SelectionFailed {
             message: error.to_string(),
-        })?;
-    index.checked_sub(1).ok_or_else(|| crate::project_detect::DetectProjectError::SelectionFailed {
-        message: String::from("selector returned invalid index: 0"),
-    })
+        }
+    })?;
+    index.checked_sub(1).ok_or_else(
+        || crate::project_detect::DetectProjectError::SelectionFailed {
+            message: String::from("selector returned invalid index: 0"),
+        },
+    )
 }
 
 fn parse_ref(reference: &str) -> Result<u32, CliError> {
