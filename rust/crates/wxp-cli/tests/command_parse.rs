@@ -27,6 +27,28 @@ fn parses_start_command_with_existing_flags() {
             cli_path: Some("/Applications/Wechat Devtools.app/Contents/MacOS/cli".into()),
             appid: Some("wx123".into()),
             auto_port: 9423,
+            proxy: false,
+            proxy_https: false,
+            timeout_ms: 35000,
+        }
+    );
+}
+
+#[test]
+fn parses_start_command_with_proxy_flags() {
+    let cli = Cli::try_parse_from(["wxpilot", "start", "/tmp/demo/dist", "--proxy", "--https"])
+        .expect("parse");
+
+    let command = CliCommand::try_from(cli).expect("normalize");
+    assert_eq!(
+        command,
+        CliCommand::Start {
+            project_path: Some("/tmp/demo/dist".into()),
+            cli_path: None,
+            appid: None,
+            auto_port: 9420,
+            proxy: true,
+            proxy_https: true,
             timeout_ms: 35000,
         }
     );
