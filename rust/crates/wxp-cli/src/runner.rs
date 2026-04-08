@@ -3,6 +3,8 @@ use std::env;
 use std::fs;
 use std::io::{self, IsTerminal, Write};
 use std::os::unix::net::UnixStream;
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
@@ -31,6 +33,7 @@ pub fn build_rpc_call(command: &CliCommand) -> Result<RpcCall, CliError> {
             appid,
             auto_port,
             timeout_ms,
+            ..
         } => {
             let project_path = project_path.clone().ok_or_else(|| {
                 CliError::Message("start command requires resolved project path".into())
@@ -222,6 +225,33 @@ pub fn build_rpc_call(command: &CliCommand) -> Result<RpcCall, CliError> {
 
 pub fn execute(command: CliCommand) -> Result<Value, CliError> {
     match command {
+        CliCommand::Start {
+            proxy,
+            proxy_https,
+            project_path,
+            cli_path,
+            appid,
+            auto_port,
+            timeout_ms,
+        } => {
+            let start = prepared_command(CliCommand::Start {
+                project_path,
+                cli_path,
+                appid,
+                auto_port,
+                proxy,
+                proxy_https,
+                timeout_ms,
+            })?;
+            if proxy {
+                let _ = execute_rpc(CliCommand::NetStart {
+                    port: 8899,
+                    https: proxy_https,
+                    timeout_ms: 30_000,
+                })?;
+            }
+            execute_rpc(start)
+        }
         CliCommand::DaemonStop => {
             let result = run_stop_daemon()?;
             Ok(json!({
@@ -255,6 +285,8 @@ fn prepared_command(command: CliCommand) -> Result<CliCommand, CliError> {
             cli_path,
             appid,
             auto_port,
+            proxy,
+            proxy_https,
             timeout_ms,
         } => {
             let project_path = match project_path {
@@ -266,6 +298,8 @@ fn prepared_command(command: CliCommand) -> Result<CliCommand, CliError> {
                 cli_path,
                 appid,
                 auto_port,
+                proxy,
+                proxy_https,
                 timeout_ms,
             })
         }
@@ -356,6 +390,12 @@ fn run_stop_daemon() -> Result<crate::daemon_client::StopResult, CliError> {
         pid_from_file,
         listed_pids,
         kill_pid: Box::new(kill_pid),
+        remove_runtime_file: Box::new(remove_runtime_file),
+        wait: Box::new(|ms| {
+            Box::pin(async move {
+                std::thread::sleep(Duration::from_millis(ms));
+            })
+        }),
     };
 
     tokio::runtime::Builder::new_current_thread()
@@ -479,10 +519,23 @@ fn runtime_dir() -> PathBuf {
 
 fn spawn_daemon_process() -> Result<(), String> {
     let daemon_bin = locate_daemon_binary();
-    Command::new(daemon_bin)
+    let mut command = Command::new(daemon_bin);
+    command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::null());
+
+    #[cfg(unix)]
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() == -1 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+
+    command
         .spawn()
         .map(|_| ())
         .map_err(|error| error.to_string())
@@ -537,8 +590,20 @@ fn list_process_ids() -> Vec<u32> {
 }
 
 fn kill_pid(pid: u32) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        let result = unsafe { libc::kill(pid as i32, libc::SIGTERM) };
+        return if result == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error().to_string())
+        };
+    }
+
+    #[cfg(not(unix))]
     Command::new("kill")
         .args(["-TERM", &pid.to_string()])
+        .stderr(Stdio::null())
         .status()
         .map_err(|error| error.to_string())
         .and_then(|status| {
@@ -548,6 +613,14 @@ fn kill_pid(pid: u32) -> Result<(), String> {
                 Err(format!("failed to kill pid {pid}"))
             }
         })
+}
+
+fn remove_runtime_file(path: PathBuf) {
+    if let Err(error) = fs::remove_file(path) {
+        if error.kind() != io::ErrorKind::NotFound {
+            let _ = error;
+        }
+    }
 }
 
 fn map_daemon_error(message: String) -> CliError {

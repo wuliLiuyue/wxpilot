@@ -34,6 +34,8 @@ pub enum CliCommand {
         cli_path: Option<String>,
         appid: Option<String>,
         auto_port: u16,
+        proxy: bool,
+        proxy_https: bool,
         timeout_ms: u64,
     },
     Connect {
@@ -141,11 +143,15 @@ impl TryFrom<Cli> for CliCommand {
                 cli_path,
                 appid,
                 auto_port,
+                proxy,
+                https,
             }) => Ok(Self::Start {
                 project_path,
                 cli_path,
                 appid,
                 auto_port,
+                proxy: proxy || https,
+                proxy_https: https,
                 timeout_ms: 35_000,
             }),
             Commands::Connect(args) => Ok(Self::Connect {

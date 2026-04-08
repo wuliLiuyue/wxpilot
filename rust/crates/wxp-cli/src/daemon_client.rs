@@ -31,6 +31,8 @@ pub struct StopDeps {
     pub pid_from_file: Option<u32>,
     pub listed_pids: Vec<u32>,
     pub kill_pid: Box<dyn Fn(u32) -> Result<(), String> + Send + Sync>,
+    pub remove_runtime_file: Box<dyn Fn(PathBuf) + Send + Sync>,
+    pub wait: Box<dyn Fn(u64) -> WaitFuture + Send + Sync>,
 }
 
 fn runtime_dir() -> PathBuf {
@@ -64,11 +66,12 @@ pub async fn connect_to_daemon(deps: ConnectDeps) -> Result<ProbeResult, String>
 }
 
 pub async fn stop_daemon(deps: StopDeps) -> Result<StopResult, String> {
-    let _socket_path = runtime_dir().join(RUST_SOCKET_FILE);
-    let _pid_path = runtime_dir().join(RUST_PID_FILE);
+    let socket_path = runtime_dir().join(RUST_SOCKET_FILE);
+    let pid_path = runtime_dir().join(RUST_PID_FILE);
     let mut target_pids = Vec::new();
 
     let _ = (deps.rpc_stop)().await;
+    (deps.wait)(200).await;
 
     if let Some(pid) = deps.pid_from_file {
         target_pids.push(pid);
@@ -83,6 +86,12 @@ pub async fn stop_daemon(deps: StopDeps) -> Result<StopResult, String> {
         if (deps.kill_pid)(pid).is_ok() {
             killed_pids.push(pid);
         }
+    }
+
+    (deps.wait)(200).await;
+    if !(deps.probe_running)().await {
+        (deps.remove_runtime_file)(socket_path);
+        (deps.remove_runtime_file)(pid_path);
     }
 
     Ok(StopResult {
