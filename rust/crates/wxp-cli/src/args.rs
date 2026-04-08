@@ -64,6 +64,12 @@ pub struct StartArgs {
 
     #[arg(long = "auto-port", default_value_t = 9420)]
     pub auto_port: u16,
+
+    #[arg(long, default_value_t = false)]
+    pub proxy: bool,
+
+    #[arg(long, default_value_t = false)]
+    pub https: bool,
 }
 
 #[derive(Debug, Args)]
