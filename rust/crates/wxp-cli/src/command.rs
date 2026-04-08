@@ -1,8 +1,6 @@
 use std::convert::TryFrom;
 
-use crate::args::{
-    Cli, Commands, DaemonCommands, DaemonKindArg, FindArgs, NetCommands, StartArgs,
-};
+use crate::args::{Cli, Commands, DaemonCommands, DaemonKindArg, FindArgs, NetCommands, StartArgs};
 use crate::error::CliError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -210,9 +208,7 @@ impl TryFrom<Cli> for CliCommand {
                     https: args.https,
                     timeout_ms: 30_000,
                 }),
-                NetCommands::Stop => Ok(Self::NetStop {
-                    timeout_ms: 15_000,
-                }),
+                NetCommands::Stop => Ok(Self::NetStop { timeout_ms: 15_000 }),
                 NetCommands::Log(args) => Ok(Self::NetLog {
                     filter: args.filter,
                     limit: args.limit,

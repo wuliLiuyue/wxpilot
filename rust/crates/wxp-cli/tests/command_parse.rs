@@ -34,8 +34,15 @@ fn parses_start_command_with_existing_flags() {
 
 #[test]
 fn parses_connect_command_with_command_level_timeout() {
-    let cli = Cli::try_parse_from(["wxpilot", "--timeout", "999", "connect", "--ws", "ws://127.0.0.1:9420"])
-        .expect("parse");
+    let cli = Cli::try_parse_from([
+        "wxpilot",
+        "--timeout",
+        "999",
+        "connect",
+        "--ws",
+        "ws://127.0.0.1:9420",
+    ])
+    .expect("parse");
 
     let command = CliCommand::try_from(cli).expect("normalize");
     assert_eq!(
@@ -63,12 +70,7 @@ fn parses_net_start_and_stop_with_command_level_timeouts() {
 
     let stop = Cli::try_parse_from(["wxpilot", "net", "stop"]).expect("parse");
     let stop_command = CliCommand::try_from(stop).expect("normalize");
-    assert_eq!(
-        stop_command,
-        CliCommand::NetStop {
-            timeout_ms: 15000,
-        }
-    );
+    assert_eq!(stop_command, CliCommand::NetStop { timeout_ms: 15000 });
 }
 
 #[test]
