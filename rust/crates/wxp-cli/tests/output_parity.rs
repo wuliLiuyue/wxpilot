@@ -1,6 +1,8 @@
+use chrono::{TimeZone, Utc};
 use serde_json::json;
+use wxp_cli::command::CliCommand;
 use wxp_cli::error::CliError;
-use wxp_cli::output::{render_error, render_ok, render_ref_expired, OutputMode};
+use wxp_cli::output::{render_command_ok, render_error, render_ok, render_ref_expired, OutputMode};
 
 #[test]
 fn renders_summary_with_hint_in_human_mode() {
@@ -75,4 +77,85 @@ fn cli_error_exit_codes_match_minimal_contract() {
 fn renders_ref_expired_human_message() {
     let rendered = render_ref_expired(7, OutputMode::Human);
     assert_eq!(rendered, "ERR: %7 expired, run 'wxpilot view' to refresh");
+}
+
+#[test]
+fn renders_net_start_human_output_like_ts_cli() {
+    let rendered = render_command_ok(
+        &CliCommand::NetStart {
+            port: 8899,
+            https: true,
+            timeout_ms: 30_000,
+        },
+        &json!({
+            "ok": true,
+            "port": 8899,
+            "https": true,
+            "caPath": "/tmp/cert.pem"
+        }),
+        OutputMode::Human,
+    );
+
+    assert_eq!(
+        rendered,
+        "OK: proxy listening on 127.0.0.1:8899 (HTTPS enabled)\n请在微信开发者工具设置代理 → 127.0.0.1:8899\nCA 证书已生成: /tmp/cert.pem"
+    );
+}
+
+#[test]
+fn renders_net_install_ca_human_output_like_ts_cli() {
+    let rendered = render_command_ok(
+        &CliCommand::NetInstallCa,
+        &json!({
+            "ok": true,
+            "certFile": "/tmp/cert.pem"
+        }),
+        OutputMode::Human,
+    );
+
+    assert_eq!(
+        rendered,
+        "OK: CA 证书已安装到系统钥匙串\ncert: /tmp/cert.pem\n请完全重启微信开发者工具后生效"
+    );
+}
+
+#[test]
+fn renders_net_log_human_output_like_ts_cli() {
+    let ts = Utc
+        .with_ymd_and_hms(2026, 4, 8, 3, 0, 0)
+        .single()
+        .expect("datetime")
+        .timestamp_millis();
+    let rendered = render_command_ok(
+        &CliCommand::NetLog {
+            filter: None,
+            limit: 20,
+            with_body: true,
+            json: false,
+        },
+        &json!({
+            "ok": true,
+            "logs": [
+                {
+                    "ts": ts,
+                    "method": "GET",
+                    "url": "https://example.com/api/orders",
+                    "status": 200,
+                    "mocked": 1,
+                    "duration": 12,
+                    "req_body": "{\"page\":1}",
+                    "res_body": "{\"ok\":true}"
+                }
+            ],
+            "truncated": true,
+            "shownCount": 1,
+            "totalCount": 3
+        }),
+        OutputMode::Human,
+    );
+
+    assert_eq!(
+        rendered,
+        "[显示 1/3 条，使用 --limit 调整]\n2026-04-08T03:00:00.000Z GET https://example.com/api/orders 200 [MOCK] 12ms\n  req: {\"page\":1}\n  res: {\"ok\":true}"
+    );
 }

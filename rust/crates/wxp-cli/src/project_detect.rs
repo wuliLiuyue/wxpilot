@@ -86,9 +86,11 @@ pub fn detect_or_select_project(
         [only] => Ok(only.clone()),
         many if is_tty => {
             let index = selector.choose(many)?;
-            many.get(index).cloned().ok_or_else(|| DetectProjectError::SelectionFailed {
-                message: format!("selector returned invalid index: {}", index),
-            })
+            many.get(index)
+                .cloned()
+                .ok_or_else(|| DetectProjectError::SelectionFailed {
+                    message: format!("selector returned invalid index: {}", index),
+                })
         }
         many => Err(DetectProjectError::MultipleCandidates {
             candidates: many.to_vec(),
@@ -109,7 +111,8 @@ fn collect_dist_candidates(
     max_level: usize,
     candidates: &mut Vec<PathBuf>,
 ) -> Result<(), DetectProjectError> {
-    let entries = fs::read_dir(root).map_err(|source| DetectProjectError::scan_failed(root, source))?;
+    let entries =
+        fs::read_dir(root).map_err(|source| DetectProjectError::scan_failed(root, source))?;
 
     for entry in entries {
         let entry = entry.map_err(|source| DetectProjectError::scan_failed(root, source))?;

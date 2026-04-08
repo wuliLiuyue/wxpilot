@@ -29,6 +29,8 @@ fn fails_without_subcommand() {
         .expect("binary")
         .assert()
         .failure()
-        .stderr(predicate::str::contains("Usage: wxpilot [OPTIONS] <COMMAND>"))
+        .stderr(predicate::str::contains(
+            "Usage: wxpilot [OPTIONS] <COMMAND>",
+        ))
         .stderr(predicate::str::contains("Commands:"));
 }
