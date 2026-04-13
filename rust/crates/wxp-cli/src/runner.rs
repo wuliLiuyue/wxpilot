@@ -542,17 +542,27 @@ fn spawn_daemon_process() -> Result<(), String> {
 }
 
 fn locate_daemon_binary() -> PathBuf {
+    let current_exe = env::current_exe().ok();
+    locate_daemon_binary_from(current_exe.as_deref())
+}
+
+fn locate_daemon_binary_from(current_exe: Option<&Path>) -> PathBuf {
     if let Some(path) = env::var_os("WXP_DAEMON_BIN") {
         return PathBuf::from(path);
     }
 
-    if let Ok(current_exe) = env::current_exe() {
+    if let Some(current_exe) = current_exe {
         if let Some(directory) = current_exe.parent() {
             let sibling = directory.join("wxp-daemon");
             if sibling.exists() {
                 return sibling;
             }
         }
+    }
+
+    let private_install = runtime_dir().join("bin").join("wxp-daemon");
+    if private_install.exists() {
+        return private_install;
     }
 
     PathBuf::from("wxp-daemon")
@@ -628,5 +638,112 @@ fn map_daemon_error(message: String) -> CliError {
         CliError::DaemonUnavailable(stripped.to_string())
     } else {
         CliError::Message(message)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::locate_daemon_binary_from;
+    use std::env;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::sync::{Mutex, OnceLock};
+    use tempfile::tempdir;
+
+    fn env_lock() -> &'static Mutex<()> {
+        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        ENV_LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn set_home(path: &Path) {
+        // SAFETY: tests hold a process-wide mutex around env mutation.
+        unsafe {
+            env::set_var("HOME", path);
+        }
+    }
+
+    fn clear_daemon_bin() {
+        // SAFETY: tests hold a process-wide mutex around env mutation.
+        unsafe {
+            env::remove_var("WXP_DAEMON_BIN");
+        }
+    }
+
+    fn set_daemon_bin(path: &Path) {
+        // SAFETY: tests hold a process-wide mutex around env mutation.
+        unsafe {
+            env::set_var("WXP_DAEMON_BIN", path);
+        }
+    }
+
+    #[test]
+    fn locate_daemon_binary_prefers_explicit_env_override() {
+        let _guard = env_lock().lock().expect("lock env");
+        let home = tempdir().expect("home");
+        set_home(home.path());
+        clear_daemon_bin();
+
+        let sibling_dir = tempdir().expect("sibling");
+        let sibling = sibling_dir.path().join("wxp-daemon");
+        fs::write(&sibling, "#!/bin/sh\n").expect("write sibling");
+
+        let private_dir = home.path().join(".wxpilot/bin");
+        fs::create_dir_all(&private_dir).expect("mkdir private");
+        fs::write(private_dir.join("wxp-daemon"), "#!/bin/sh\n").expect("write private");
+
+        let custom = home.path().join("custom/wxp-daemon");
+        set_daemon_bin(&custom);
+
+        assert_eq!(
+            locate_daemon_binary_from(Some(&sibling_dir.path().join("wxpilot"))),
+            custom
+        );
+
+        clear_daemon_bin();
+    }
+
+    #[test]
+    fn locate_daemon_binary_prefers_sibling_before_private_install() {
+        let _guard = env_lock().lock().expect("lock env");
+        let home = tempdir().expect("home");
+        set_home(home.path());
+        clear_daemon_bin();
+
+        let sibling_dir = tempdir().expect("sibling");
+        let sibling = sibling_dir.path().join("wxp-daemon");
+        fs::write(&sibling, "#!/bin/sh\n").expect("write sibling");
+
+        let private_dir = home.path().join(".wxpilot/bin");
+        fs::create_dir_all(&private_dir).expect("mkdir private");
+        fs::write(private_dir.join("wxp-daemon"), "#!/bin/sh\n").expect("write private");
+
+        assert_eq!(
+            locate_daemon_binary_from(Some(&sibling_dir.path().join("wxpilot"))),
+            sibling
+        );
+    }
+
+    #[test]
+    fn locate_daemon_binary_uses_private_install_when_present() {
+        let _guard = env_lock().lock().expect("lock env");
+        let home = tempdir().expect("home");
+        set_home(home.path());
+        clear_daemon_bin();
+
+        let private_daemon = home.path().join(".wxpilot/bin/wxp-daemon");
+        fs::create_dir_all(private_daemon.parent().expect("parent")).expect("mkdir private");
+        fs::write(&private_daemon, "#!/bin/sh\n").expect("write private");
+
+        assert_eq!(locate_daemon_binary_from(None), private_daemon);
+    }
+
+    #[test]
+    fn locate_daemon_binary_falls_back_to_path_when_no_other_candidate_exists() {
+        let _guard = env_lock().lock().expect("lock env");
+        let home = tempdir().expect("home");
+        set_home(home.path());
+        clear_daemon_bin();
+
+        assert_eq!(locate_daemon_binary_from(None), PathBuf::from("wxp-daemon"));
     }
 }
