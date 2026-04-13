@@ -547,52 +547,23 @@ async fn connect_retries_until_websocket_becomes_available() {
 }
 
 #[tokio::test]
-async fn connect_waits_until_current_page_probe_succeeds() {
-    use std::sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    };
-
+async fn connect_succeeds_without_current_page_probe() {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let addr = listener.local_addr().expect("addr");
-    let probes = Arc::new(AtomicUsize::new(0));
-    let probes_for_server = probes.clone();
-
-    tokio::spawn(async move {
+    let server = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.expect("accept");
         let mut ws = accept_async(stream).await.expect("ws accept");
-        while let Some(message) = ws.next().await {
-            let payload = message.expect("message").into_text().expect("text");
-            let request: Value = serde_json::from_str(&payload).expect("request json");
-            let id = request.get("id").cloned().unwrap_or(Value::Null);
-            let method = request
-                .get("method")
-                .and_then(Value::as_str)
-                .expect("request method");
-
-            let response = match method {
-                "App.getCurrentPage" => {
-                    let attempt = probes_for_server.fetch_add(1, Ordering::SeqCst);
-                    if attempt < 2 {
-                        json!({
-                            "id": id,
-                            "error": {
-                                "message": "not_ready_yet"
-                            }
-                        })
-                    } else {
-                        json!({
-                            "id": id,
-                            "result": { "pageId": 1, "path": "pages/index/index", "query": {} }
-                        })
-                    }
-                }
-                _ => json!({ "id": id, "result": {} }),
-            };
-
-            ws.send(Message::Text(response.to_string().into()))
-                .await
-                .expect("send");
+        match tokio::time::timeout(Duration::from_millis(250), ws.next()).await {
+            Ok(Some(message)) => {
+                let payload = message.expect("message").into_text().expect("text");
+                let request: Value = serde_json::from_str(&payload).expect("request json");
+                request
+                    .get("method")
+                    .and_then(Value::as_str)
+                    .map(|method| method == "App.getCurrentPage")
+                    .unwrap_or(false)
+            }
+            Ok(None) | Err(_) => false,
         }
     });
 
@@ -612,12 +583,12 @@ async fn connect_waits_until_current_page_probe_succeeds() {
         }),
     )
     .await
-    .expect("connect should wait for current page probe");
+    .expect("connect should succeed after websocket handshake");
 
     assert_eq!(connect["result"]["ok"], true);
     assert!(
-        probes.load(Ordering::SeqCst) >= 3,
-        "connect should keep probing current page until success"
+        !server.await.expect("join server"),
+        "connect should not require App.getCurrentPage before returning"
     );
 }
 
