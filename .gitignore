@@ -140,4 +140,10 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
 # Superpowers
-.superpowers
+.superpowers/
+
+# OMX
+.omx/
+
+# Codex
+.codex/
