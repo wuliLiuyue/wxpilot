@@ -5,26 +5,13 @@
 ## 安装
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/wuliLiuyue/wxpilot/main/install.sh | sh
-
-# 安装指定版本
-curl -fsSL https://raw.githubusercontent.com/wuliLiuyue/wxpilot/main/install.sh | sh -s -- --version v0.1.0
-```
-
-安装产物位置：
-- `~/.local/bin/wxpilot`
-- `~/.wxpilot/bin/wxp-daemon`
-
-当前仓库以 Rust CLI / Rust daemon 为默认实现。TypeScript CLI / daemon 代码仍保留在 `packages/`，仅作为迁移期对照实现与契约回归基线，不再作为主使用路径。
-
-### 开发 / 从源码运行
-
-```bash
 cd rust
 cargo build -p wxp-cli --bin wxpilot
 cargo build -p wxp-daemon --bin wxp-daemon
 ./target/debug/wxpilot --help
 ```
+
+当前仓库以 Rust CLI / Rust daemon 为默认实现。TypeScript CLI / daemon 代码仍保留在 `packages/`，仅作为迁移期对照实现与契约回归基线，不再作为主使用路径。
 
 ## 前置步骤
 
