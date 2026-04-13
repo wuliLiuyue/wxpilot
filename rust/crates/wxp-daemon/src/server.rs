@@ -392,7 +392,6 @@ pub async fn dispatch_request(state: &mut ServerState, request: &Value) -> io::R
                         .unwrap_or_else(|| "connect failed".to_string()),
                 )
             })?;
-            wait_for_current_page_ready(&connection).await?;
             let mut next_saved = state.runtime.saved.clone();
             next_saved.connected = true;
             state.persist_runtime_state(next_saved)?;
@@ -457,33 +456,6 @@ fn is_proxy_error(message: &str) -> bool {
         || message.contains("TLS connection")
         || message.contains("ECONNRESET")
         || message.contains("Failed to fetch")
-}
-
-async fn wait_for_current_page_ready(
-    connection: &wxp_automator_client::AutomatorConnection,
-) -> io::Result<()> {
-    let mut last_error = None;
-    for attempt in 0..5 {
-        if attempt > 0 {
-            sleep(Duration::from_secs(2)).await;
-        }
-
-        match connection
-            .send_with_id(
-                format!("connect_probe:{attempt}"),
-                "App.getCurrentPage",
-                json!({}),
-            )
-            .await
-        {
-            Ok(_) => return Ok(()),
-            Err(error) => last_error = Some(error.to_string()),
-        }
-    }
-
-    Err(io::Error::other(
-        last_error.unwrap_or_else(|| "current_page_probe_failed".to_string()),
-    ))
 }
 
 fn handle_stream(
