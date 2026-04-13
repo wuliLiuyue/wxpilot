@@ -542,16 +542,37 @@ fn spawn_daemon_process() -> Result<(), String> {
 }
 
 fn locate_daemon_binary() -> PathBuf {
-    if let Some(path) = env::var_os("WXP_DAEMON_BIN") {
-        return PathBuf::from(path);
+    locate_daemon_binary_with(
+        env::var_os("WXP_DAEMON_BIN").as_deref().map(Path::new),
+        env::current_exe().ok().as_deref(),
+        env::var_os("HOME").as_deref().map(Path::new),
+    )
+}
+
+fn locate_daemon_binary_with(
+    daemon_override: Option<&Path>,
+    current_exe: Option<&Path>,
+    home_dir: Option<&Path>,
+) -> PathBuf {
+    if let Some(path) = daemon_override {
+        return path.to_path_buf();
     }
 
-    if let Ok(current_exe) = env::current_exe() {
+    let mut candidates = Vec::new();
+
+    if let Some(current_exe) = current_exe {
         if let Some(directory) = current_exe.parent() {
-            let sibling = directory.join("wxp-daemon");
-            if sibling.exists() {
-                return sibling;
-            }
+            candidates.push(directory.join("wxp-daemon"));
+        }
+    }
+
+    if let Some(home_dir) = home_dir {
+        candidates.push(home_dir.join(".wxpilot/bin/wxp-daemon"));
+    }
+
+    for candidate in candidates {
+        if candidate.exists() {
+            return candidate;
         }
     }
 
@@ -628,5 +649,83 @@ fn map_daemon_error(message: String) -> CliError {
         CliError::DaemonUnavailable(stripped.to_string())
     } else {
         CliError::Message(message)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::locate_daemon_binary_with;
+    use std::fs;
+    use std::path::Path;
+    use tempfile::tempdir;
+
+    #[test]
+    fn prefers_env_override_before_sibling_and_home_bin() {
+        let workspace = tempdir().expect("tempdir");
+        let bin_dir = workspace.path().join("bin");
+        let home_dir = workspace.path().join("home");
+        fs::create_dir_all(&bin_dir).expect("create bin dir");
+        fs::create_dir_all(home_dir.join(".wxpilot/bin")).expect("create home bin dir");
+
+        let override_daemon = workspace.path().join("override/wxp-daemon");
+        let sibling = bin_dir.join("wxp-daemon");
+        let home_daemon = home_dir.join(".wxpilot/bin/wxp-daemon");
+        fs::create_dir_all(override_daemon.parent().expect("override parent"))
+            .expect("create override dir");
+        fs::write(&override_daemon, "#!/bin/sh\n").expect("write override daemon");
+        fs::write(&sibling, "#!/bin/sh\n").expect("write sibling daemon");
+        fs::write(&home_daemon, "#!/bin/sh\n").expect("write home daemon");
+
+        let resolved = locate_daemon_binary_with(
+            Some(&override_daemon),
+            Some(&bin_dir.join("wxpilot")),
+            Some(&home_dir),
+        );
+        assert_eq!(resolved, override_daemon);
+    }
+
+    #[test]
+    fn prefers_sibling_daemon_before_home_bin() {
+        let workspace = tempdir().expect("tempdir");
+        let bin_dir = workspace.path().join("bin");
+        let home_dir = workspace.path().join("home");
+        fs::create_dir_all(&bin_dir).expect("create bin dir");
+        fs::create_dir_all(home_dir.join(".wxpilot/bin")).expect("create home bin dir");
+
+        let sibling = bin_dir.join("wxp-daemon");
+        let home_daemon = home_dir.join(".wxpilot/bin/wxp-daemon");
+        fs::write(&sibling, "#!/bin/sh\n").expect("write sibling daemon");
+        fs::write(&home_daemon, "#!/bin/sh\n").expect("write home daemon");
+
+        let resolved =
+            locate_daemon_binary_with(None, Some(&bin_dir.join("wxpilot")), Some(&home_dir));
+        assert_eq!(resolved, sibling);
+    }
+
+    #[test]
+    fn falls_back_to_home_bin_before_path_lookup() {
+        let workspace = tempdir().expect("tempdir");
+        let home_dir = workspace.path().join("home");
+        fs::create_dir_all(home_dir.join(".wxpilot/bin")).expect("create home bin dir");
+
+        let home_daemon = home_dir.join(".wxpilot/bin/wxp-daemon");
+        fs::write(&home_daemon, "#!/bin/sh\n").expect("write home daemon");
+
+        let resolved = locate_daemon_binary_with(
+            None,
+            Some(Path::new("/nonexistent/wxpilot")),
+            Some(&home_dir),
+        );
+        assert_eq!(resolved, home_daemon);
+    }
+
+    #[test]
+    fn falls_back_to_path_name_when_no_embedded_daemon_exists() {
+        let resolved = locate_daemon_binary_with(
+            None,
+            Some(Path::new("/nonexistent/wxpilot")),
+            Some(Path::new("/also-missing")),
+        );
+        assert_eq!(resolved, Path::new("wxp-daemon"));
     }
 }
