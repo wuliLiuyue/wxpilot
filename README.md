@@ -13,6 +13,40 @@ cargo build -p wxp-daemon --bin wxp-daemon
 
 当前仓库以 Rust CLI / Rust daemon 为默认实现。TypeScript CLI / daemon 代码仍保留在 `packages/`，仅作为迁移期对照实现与契约回归基线，不再作为主使用路径。
 
+## 开发者本地打包与安装
+
+面向仓库开发者的本地闭环，不是正式发布安装方案。
+
+```bash
+# 先构建 macOS arm64 / x86_64 本地二进制
+make local-build
+
+# 再按当前平台安装到用户目录
+make local-install
+
+# 或者一条命令串行执行构建 + 安装
+make local-install-all
+
+# 安装相关验证
+make local-install-test
+```
+
+默认本地产物目录：
+
+- `dist/local/aarch64-apple-darwin/`
+- `dist/local/x86_64-apple-darwin/`
+
+默认安装目录：
+
+- `~/.local/bin/wxpilot`
+- `~/.wxpilot/bin/wxp-daemon`
+
+如果 `~/.local/bin` 不在 PATH 中，安装脚本会提示手动追加：
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
 ## 前置步骤
 
 微信开发者工具需已安装并启动。
