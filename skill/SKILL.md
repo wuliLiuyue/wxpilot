@@ -1,6 +1,6 @@
 ---
 name: wxpilot
-description: 微信小程序自动化操作技能。当需要通过 wxpilot CLI 操作微信小程序时使用，包括连接开发者工具、页面导航、元素交互（点击/输入/滚动）、读取页面状态、网络代理与 mock。运行 wxpilot start 前，优先检查当前工作目录下是否存在含 project.config.json 的 dist 子目录，有则可省略路径参数直接运行；多个候选时 CLI 会交互提示选择，避免在对话中询问用户。
+description: 微信小程序自动化操作技能。当需要通过 wxpilot CLI 操作微信小程序时使用，包括连接开发者工具、页面导航、元素交互（点击/输入/滚动）、读取页面状态、网络代理与 mock。默认使用 Rust CLI / Rust daemon；运行 wxpilot start 前，优先检查当前工作目录下是否存在含 project.config.json 的 dist 子目录，有则可省略路径参数直接运行；多个候选时 CLI 会交互提示选择，避免在对话中询问用户。
 ---
 
 # wxpilot — AI Agent 使用指南
@@ -28,6 +28,7 @@ wxpilot 是面向 AI Agent 的微信小程序自动化 CLI 工具，通过 Unix 
 wxpilot start                                            # 自动检测 dist/project.config.json
 wxpilot start /path/to/miniprogram                      # 明确指定路径
 wxpilot start /path/to/miniprogram --appid wx你的AppID   # appid 为占位符时
+wxpilot start /path/to/miniprogram --proxy              # 抓包会话：先自动启动 127.0.0.1:8899 代理
 
 # 第二步：连接（可单独重试，无需重新 start）
 wxpilot connect
@@ -70,6 +71,8 @@ wxpilot start <projectPath>                        # 启动自动化（运行 cl
 wxpilot start <projectPath> --appid wx你的AppID    # appid 为占位符时指定
 wxpilot start <projectPath> --cli-path <path>      # 指定开发者工具 CLI 路径
 wxpilot start <projectPath> --auto-port 9421       # 指定自动化端口（默认 9420）
+wxpilot start <projectPath> --proxy                # 抓包会话：自动先启动 127.0.0.1:8899 代理
+wxpilot start <projectPath> --proxy --https        # HTTPS MITM 抓包（需先安装 CA）
 wxpilot connect                                    # 连接（使用 start 记录的端点）
 wxpilot connect --ws ws://127.0.0.1:9420           # 直接指定 ws 端点（跳过 start）
 wxpilot disconnect                                 # 断开连接
@@ -115,8 +118,9 @@ wxpilot shot [path] --base64     # 截图并附带 base64（token 消耗大，�
 
 ### 网络代理
 ```bash
-# 用户需在微信开发者工具手动设置代理：设置 → 代理设置 → 手动 → 127.0.0.1:8899
-wxpilot net start [--port 8899] [--https]            # 启动代理（HTTPS 模式可解密 HTTPS 流量）
+# 推荐：抓包时优先使用 wxpilot start <projectPath> --proxy [--https]
+# 仅在需要单独管理代理生命周期时，再直接使用 net.start / net.stop
+wxpilot net start [--port 8899] [--https]            # 单独启动代理（HTTPS 模式可解密 HTTPS 流量）
 wxpilot net stop                                      # 停止代理
 wxpilot net log [--filter <url>] [--limit 20]         # 查看请求摘要（默认不含 body）
 wxpilot net log [--filter <url>] --with-body          # 含请求/响应体（截断至 2000 字符）
@@ -219,9 +223,8 @@ wxpilot shot /tmp/result.png
 ### HTTP 模式（仅抓 HTTP，HTTPS 透明放行不记录）
 
 ```bash
-wxpilot net start               # 启动代理（HTTP 模式，无需证书）
 # → 开发者工具：设置 → 代理 → 手动设置代理 → 127.0.0.1:8899
-wxpilot start <projectPath>     # ⚠️ 代理启动后再执行 start（开发者工具内部请求也走代理）
+wxpilot start <projectPath> --proxy    # 推荐：由 start 统一确保代理已启动
 wxpilot connect
 wxpilot net clear
 wxpilot goto /pages/xxx/index
@@ -239,8 +242,7 @@ wxpilot net install-ca          # 一键安装 CA 证书到系统钥匙串
 # → 开发者工具：设置 → 代理 → 手动设置代理 → 127.0.0.1:8899
 
 # ── 每次抓包 ──
-wxpilot net start --https       # 先启动代理（代理必须先于 start 命令运行）
-wxpilot start <projectPath>
+wxpilot start <projectPath> --proxy --https
 wxpilot connect
 wxpilot net clear
 wxpilot goto /pages/xxx/index
@@ -250,8 +252,8 @@ wxpilot net log --filter api.example.com
 
 ### 关键注意事项
 
-- 开发者工具设置代理后，**工具自身的内部请求也走代理**；必须保证代理在运行，否则 `wxpilot start` 会报 `cli auto 失败 Failed to fetch`
-- 若忘记启动代理就执行了 `wxpilot start`，daemon 会自动检测并启动 HTTP 模式代理后重试
+- 开发者工具设置代理后，**工具自身的内部请求也走代理**；若代理未运行，页面可能直接报 `TypeError: Failed to fetch`
+- 抓包场景优先使用 `wxpilot start <projectPath> --proxy`，不要把“自动兜底重试”当主流程
 - `net install-ca` 安装后必须**完全重启**开发者工具才生效
 - HTTP 模式下 HTTPS 请求透明隧道放行（不记录）；要记录 HTTPS 流量必须用 `--https` 模式
 
