@@ -14,7 +14,7 @@ export interface ElementNode {
 }
 
 const INTERACTIVE_TAGS = new Set([
-  'button', 'input', 'textarea', 'picker', 'switch', 'slider', 'checkbox', 'radio',
+  'button', 'input', 'textarea', 'picker', 'switch', 'slider', 'checkbox', 'radio', 'scroll-view',
 ])
 
 const INTERACTIVE_ATTRS = new Set([

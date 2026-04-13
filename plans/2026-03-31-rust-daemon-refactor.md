@@ -2,13 +2,21 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 在保持现有 TypeScript CLI 命令面与输出稳定的前提下，引入 Rust daemon 主实现，并让 CLI 具备 Rust 优先、TS fallback 的双 daemon 能力。
+**Goal:** 在保持现有 TypeScript CLI 命令面与输出稳定的前提下，引入 Rust daemon 主实现，并保留通过显式参数选择 Rust/TS daemon 的双 daemon 能力。
 
 **Architecture:** 先冻结现有 TS daemon 的 RPC 契约与 CLI 输出，再建立 `rust/` workspace 的公共层、协议层与 daemon 骨架。随后按读路径、snapshot/ref、动作链路、proxy/store、灰度回归的顺序逐层替换 TS daemon 能力，同时维持 CLI 对外行为兼容。
 
 **Tech Stack:** TypeScript, pnpm workspace, Vitest, Rust workspace, Tokio, Serde, tokio-tungstenite, rusqlite, tracing
 
 ---
+
+## Status Update
+
+**Last Updated:** 2026-04-03
+
+- 这份计划中的主体工作已经在仓库代码中落地，不再适合作为逐项打勾的实时进度来源。
+- 已验证落地的内容包括：contracts 冻结、CLI 双 daemon 选择、Rust workspace/crate 骨架、基础 contract tests、root `pnpm lint` / `pnpm build` / `pnpm test` 通过。
+- 后续阶段性收口以 `plans/2026-04-01-rust-daemon-native-realignment.md` 与 `plans/2026-04-02-rust-daemon-gap-closure.md` 为准；本文件保留为“首版总实现计划”。
 
 ## Scope Decision
 
@@ -26,8 +34,8 @@
 ### Existing files to modify
 
 - Modify: `package.json` - 接入 Rust workspace 相关脚本。
-- Modify: `README.md` - 更新双 daemon 启动、fallback 与验证说明。
-- Modify: `packages/cli/src/client.ts` - 双 daemon socket 探测、spawn 与 fallback。
+- Modify: `README.md` - 更新双 daemon 启动、显式选择 daemon 与验证说明。
+- Modify: `packages/cli/src/client.ts` - 双 daemon socket 探测、spawn 与显式 daemon 选择。
 - Modify: `packages/cli/src/index.ts` - `status` 输出 `daemonKind`，必要时增加内部探测调用。
 - Modify: `packages/daemon/src/rpc-server.ts` - 抽取 TS 契约 fixture 生成逻辑或补充契约测试入口。
 - Modify: `packages/daemon/src/snapshot/parser.test.ts` - 迁移为 Rust snapshot 行为对齐的 fixture 来源。
@@ -35,11 +43,10 @@
 
 ### New documentation and fixture files
 
-- Create: `docs/contracts/daemon-rpc.json` - 冻结 TS daemon 的 method/params/result/error 契约。
-- Create: `docs/contracts/cli-output.md` - 冻结 `status/view/find/state/net log` 输出格式与默认值。
-- Create: `docs/automator/protocol-manifest.md` - automator 逆向协议清单。
-- Create: `packages/cli/src/__fixtures__/daemon-probes.ts` - CLI 探测测试使用的 socket 与 spawn fixture。
-- Create: `packages/daemon/src/__fixtures__/rpc-contract.ts` - TS daemon 契约测试 fixture。
+- Create: `packages/contracts/docs/daemon-rpc.json` - 冻结 TS daemon 的 method/params/result/error 契约。
+- Create: `packages/contracts/docs/cli-output.md` - 冻结 `status/view/find/state/net log` 输出格式与默认值。
+- Create: `packages/contracts/docs/automator-protocol-manifest.md` - automator 逆向协议清单。
+- Create: `packages/contracts/src/daemon-contract.ts` - TS daemon 契约测试 fixture。
 
 ### New Rust workspace files
 
@@ -73,23 +80,23 @@
 
 ### New cross-implementation contract tests
 
-- Create: `tests/contracts/daemon-contract.spec.ts`
-- Create: `tests/contracts/cli-fallback.spec.ts`
-- Create: `tests/contracts/find-output.spec.ts`
+- Create: `packages/contracts/tests/daemon-contract.spec.ts`
+- Create: `packages/contracts/tests/cli-fallback.spec.ts`
+- Create: `packages/contracts/tests/find-output.spec.ts`
 
 ## Task 1: 冻结 TS daemon 与 CLI 契约
 
 **Files:**
-- Create: `docs/contracts/daemon-rpc.json`
-- Create: `docs/contracts/cli-output.md`
-- Create: `packages/daemon/src/__fixtures__/rpc-contract.ts`
-- Test: `tests/contracts/daemon-contract.spec.ts`
+- Create: `packages/contracts/docs/daemon-rpc.json`
+- Create: `packages/contracts/docs/cli-output.md`
+- Create: `packages/contracts/src/daemon-contract.ts`
+- Test: `packages/contracts/tests/daemon-contract.spec.ts`
 
 - [ ] **Step 1: 写失败中的契约测试**
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { daemonContract } from '../../packages/daemon/src/__fixtures__/rpc-contract.js'
+import { daemonContract } from '../packages/contracts/src/daemon-contract.js'
 
 describe('ts daemon contract fixture', () => {
   it('covers public rpc methods and internal probe methods', () => {
@@ -113,14 +120,14 @@ describe('ts daemon contract fixture', () => {
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `pnpm vitest run tests/contracts/daemon-contract.spec.ts`
+Run: `pnpm vitest run packages/contracts/tests/daemon-contract.spec.ts`
 
-Expected: FAIL，提示 `Cannot find module '../../packages/daemon/src/__fixtures__/rpc-contract.js'`
+Expected: FAIL，提示 `Cannot find module '../packages/contracts/src/daemon-contract.js'`
 
 - [ ] **Step 3: 写最小契约 fixture 与文档**
 
 ```ts
-// packages/daemon/src/__fixtures__/rpc-contract.ts
+// packages/contracts/src/daemon-contract.ts
 export const daemonContract = {
   methods: [
     'start', 'connect', 'disconnect', 'status', 'goto', 'back', 'reload',
@@ -140,7 +147,7 @@ export const daemonContract = {
 ```
 
 ```json
-// docs/contracts/daemon-rpc.json
+// packages/contracts/docs/daemon-rpc.json
 {
   "transport": "line-delimited-json-rpc-over-uds",
   "request": { "jsonrpc": "2.0", "id": "string|number", "method": "string", "params": "object" },
@@ -155,7 +162,7 @@ export const daemonContract = {
 ```
 
 ```md
-<!-- docs/contracts/cli-output.md -->
+<!-- packages/contracts/docs/cli-output.md -->
 # CLI Output Contract
 
 - `status` 保留 `ok/connected/projectPath/proxy`，新增 `daemonKind`
@@ -167,14 +174,14 @@ export const daemonContract = {
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `pnpm vitest run tests/contracts/daemon-contract.spec.ts`
+Run: `pnpm vitest run packages/contracts/tests/daemon-contract.spec.ts`
 
 Expected: PASS，2 tests passed
 
 - [ ] **Step 5: 提交**
 
 ```bash
-git add docs/contracts/daemon-rpc.json docs/contracts/cli-output.md packages/daemon/src/__fixtures__/rpc-contract.ts tests/contracts/daemon-contract.spec.ts
+git add packages/contracts/docs/daemon-rpc.json packages/contracts/docs/cli-output.md packages/contracts/src/daemon-contract.ts packages/contracts/tests/daemon-contract.spec.ts
 git commit -m "test: freeze ts daemon rpc contract"
 ```
 
@@ -318,14 +325,13 @@ git commit -m "feat: bootstrap rust daemon workspace"
 **Files:**
 - Modify: `packages/cli/src/client.ts`
 - Modify: `packages/cli/src/index.ts`
-- Create: `packages/cli/src/__fixtures__/daemon-probes.ts`
-- Test: `tests/contracts/cli-fallback.spec.ts`
+- Test: `packages/contracts/tests/cli-fallback.spec.ts`
 
 - [ ] **Step 1: 写失败中的 CLI fallback 测试**
 
 ```ts
 import { describe, expect, it, vi } from 'vitest'
-import { connectWithFallback } from '../../packages/cli/src/client.js'
+import { connectWithFallback } from '../packages/cli/src/client.js'
 
 describe('cli fallback', () => {
   it('prefers rust daemon and falls back to ts daemon when rust probe fails', async () => {
@@ -350,7 +356,7 @@ describe('cli fallback', () => {
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `pnpm vitest run tests/contracts/cli-fallback.spec.ts`
+Run: `pnpm vitest run packages/contracts/tests/cli-fallback.spec.ts`
 
 Expected: FAIL，提示 `connectWithFallback is not exported`
 
@@ -399,28 +405,23 @@ type StatusResult = {
 }
 ```
 
-```ts
-// packages/cli/src/__fixtures__/daemon-probes.ts
-export const probeOrder = ['rust', 'ts'] as const
-```
-
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `pnpm vitest run tests/contracts/cli-fallback.spec.ts`
+Run: `pnpm vitest run packages/contracts/tests/cli-fallback.spec.ts`
 
 Expected: PASS，CLI 探测顺序固定为 Rust 优先，TS fallback
 
 - [ ] **Step 5: 提交**
 
 ```bash
-git add packages/cli/src/client.ts packages/cli/src/index.ts packages/cli/src/__fixtures__/daemon-probes.ts tests/contracts/cli-fallback.spec.ts
+git add packages/cli/src/client.ts packages/cli/src/index.ts packages/contracts/tests/cli-fallback.spec.ts
 git commit -m "feat: add cli dual-daemon fallback"
 ```
 
 ## Task 4: 建立 automator 协议清单与 Rust WebSocket client
 
 **Files:**
-- Create: `docs/automator/protocol-manifest.md`
+- Create: `packages/contracts/docs/automator-protocol-manifest.md`
 - Create: `rust/crates/wxp-automator-protocol/src/lib.rs`
 - Create: `rust/crates/wxp-automator-client/src/lib.rs`
 - Test: `rust/crates/wxp-automator-client/tests/ws_client.rs`
@@ -496,7 +497,7 @@ impl AutomatorClient {
 ```
 
 ```md
-<!-- docs/automator/protocol-manifest.md -->
+<!-- packages/contracts/docs/automator-protocol-manifest.md -->
 # Automator Protocol Manifest
 
 | owner | method | params | result | used_by_wxpilot | covered |
@@ -516,7 +517,7 @@ Expected: PASS，pending map 行为可验证
 - [ ] **Step 5: 提交**
 
 ```bash
-git add docs/automator/protocol-manifest.md rust/crates/wxp-automator-protocol rust/crates/wxp-automator-client
+git add packages/contracts/docs/automator-protocol-manifest.md rust/crates/wxp-automator-protocol rust/crates/wxp-automator-client
 git commit -m "feat: add rust automator protocol client"
 ```
 
@@ -660,13 +661,13 @@ git commit -m "feat: add rust snapshot parser and ref versioning"
 - Create: `rust/crates/wxp-daemon/src/handlers/mod.rs`
 - Modify: `rust/crates/wxp-daemon/src/lib.rs`
 - Test: `rust/crates/wxp-daemon/tests/health_probe.rs`
-- Test: `tests/contracts/find-output.spec.ts`
+- Test: `packages/contracts/tests/find-output.spec.ts`
 
 - [ ] **Step 1: 写失败中的读路径契约测试**
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { formatFindOutput } from '../../rust-bindings/find-output.js'
+import { formatFindOutput } from '../packages/contracts/src/find-output.js'
 
 describe('rust daemon find output', () => {
   it('matches ts header and empty result text', () => {
@@ -698,7 +699,7 @@ async fn health_version_capabilities_are_available() {
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `pnpm vitest run tests/contracts/find-output.spec.ts && cd rust && cargo test -p wxp-daemon`
+Run: `pnpm vitest run packages/contracts/tests/find-output.spec.ts && cd rust && cargo test -p wxp-daemon`
 
 Expected: FAIL，`formatFindOutput` 与 `handle_probe` 尚未实现
 
@@ -739,14 +740,14 @@ pub struct RequestContext {
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `pnpm vitest run tests/contracts/find-output.spec.ts && cd rust && cargo test -p wxp-daemon`
+Run: `pnpm vitest run packages/contracts/tests/find-output.spec.ts && cd rust && cargo test -p wxp-daemon`
 
 Expected: PASS，内部探测接口与 `find` 头部格式已经冻结
 
 - [ ] **Step 5: 提交**
 
 ```bash
-git add rust/crates/wxp-daemon tests/contracts/find-output.spec.ts
+git add rust/crates/wxp-daemon packages/contracts/tests/find-output.spec.ts
 git commit -m "feat: add rust daemon read-path probes"
 ```
 
@@ -941,15 +942,15 @@ git commit -m "feat: add rust proxy and store primitives"
 **Files:**
 - Modify: `package.json`
 - Modify: `README.md`
-- Create: `tests/contracts/daemon-contract.spec.ts`
-- Create: `tests/contracts/cli-fallback.spec.ts`
-- Create: `tests/contracts/find-output.spec.ts`
+- Create: `packages/contracts/tests/daemon-contract.spec.ts`
+- Create: `packages/contracts/tests/cli-fallback.spec.ts`
+- Create: `packages/contracts/tests/find-output.spec.ts`
 
 - [ ] **Step 1: 写失败中的全链路回归入口**
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { daemonContract } from '../../packages/daemon/src/__fixtures__/rpc-contract.js'
+import { daemonContract } from '../packages/contracts/src/daemon-contract.js'
 
 describe('cross implementation contract suite', () => {
   it('keeps ts and rust daemon method list identical', () => {
@@ -961,7 +962,7 @@ describe('cross implementation contract suite', () => {
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `pnpm vitest run tests/contracts`
+Run: `pnpm vitest run packages/contracts/tests`
 
 Expected: FAIL，直到 Rust daemon 方法列表、输出与 CLI fallback 均已接通
 
@@ -1001,7 +1002,7 @@ Expected: PASS，TS 类型检查与 Rust 格式检查全部通过
 - [ ] **Step 5: 提交**
 
 ```bash
-git add package.json README.md tests/contracts
+git add package.json README.md packages/contracts/tests
 git commit -m "chore: wire rust daemon rollout checks"
 ```
 
@@ -1017,9 +1018,9 @@ git commit -m "chore: wire rust daemon rollout checks"
 
 ## Verification Matrix
 
-- `pnpm vitest run tests/contracts/daemon-contract.spec.ts`
-- `pnpm vitest run tests/contracts/cli-fallback.spec.ts`
-- `pnpm vitest run tests/contracts/find-output.spec.ts`
+- `pnpm vitest run packages/contracts/tests/daemon-contract.spec.ts`
+- `pnpm vitest run packages/contracts/tests/cli-fallback.spec.ts`
+- `pnpm vitest run packages/contracts/tests/find-output.spec.ts`
 - `cd rust && cargo test -p wxp-rpc -p wxp-daemon`
 - `cd rust && cargo test -p wxp-automator-client`
 - `cd rust && cargo test -p wxp-snapshot -p wxp-ref-store`

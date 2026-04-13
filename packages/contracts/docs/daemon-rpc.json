@@ -1,0 +1,16 @@
+{
+  "transport": "line-delimited-json-rpc-over-uds",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "string|number",
+    "method": "string",
+    "params": "object"
+  },
+  "errors": {
+    "REF_EXPIRED": -32000,
+    "NOT_CONNECTED": -32001,
+    "TIMEOUT": -32002,
+    "NOT_FOUND": -32003,
+    "INTERNAL": -32099
+  }
+}
