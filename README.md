@@ -13,6 +13,8 @@ cargo build -p wxp-daemon --bin wxp-daemon
 
 当前仓库以 Rust CLI / Rust daemon 为默认实现。TypeScript CLI / daemon 代码仍保留在 `packages/`，仅作为迁移期对照实现与契约回归基线，不再作为主使用路径。
 
+> 发布版需要先激活：安装后先执行 `wxpilot activate <key>`，再使用其余命令。
+
 ## 开发者本地打包与安装
 
 面向仓库开发者的本地闭环，不是正式发布安装方案。
@@ -54,7 +56,10 @@ export PATH="$HOME/.local/bin:$PATH"
 ## 快速开始
 
 ```bash
-# 第一步：启动自动化（自动检测 dist/project.config.json，或明确指定路径）
+# 第一步：激活发布版（仅需联网一次）
+wxpilot activate <key>
+
+# 第二步：启动自动化（自动检测 dist/project.config.json，或明确指定路径）
 wxpilot start
 wxpilot start /path/to/miniprogram
 wxpilot start /path/to/miniprogram --proxy        # 抓包场景：启动项目前先自动拉起 8899 代理
@@ -62,7 +67,7 @@ wxpilot start /path/to/miniprogram --proxy        # 抓包场景：启动项目�
 # appid 为占位符时
 wxpilot start /path/to/miniprogram --appid wx你的AppID
 
-# 第二步：连接
+# 第三步：连接
 wxpilot connect
 
 # 查看页面，获取可交互元素引用 %N（默认已是紧凑摘要）
@@ -98,6 +103,7 @@ wxpilot shot /tmp/result.png
 
 ### 连接管理
 ```bash
+wxpilot activate <key>                            # 联网激活并把签名证书写入 ~/.wxpilot/license.json
 wxpilot start                                      # 自动检测 dist/project.config.json
 wxpilot start <projectPath>                        # 启动自动化（运行 cli auto，等待就绪）
 wxpilot start <projectPath> --appid <id>           # appid 为占位符时指定
@@ -175,6 +181,13 @@ wxpilot wx <method> [args...]    # 调用 wx API
 wxpilot daemon stop
 wxpilot daemon restart
 ```
+
+## 授权与激活
+
+- 未激活时仅允许 `wxpilot activate <key>`、`wxpilot --help`、`wxpilot --version`
+- 激活成功后会在 `~/.wxpilot/license.json` 落地本机绑定的签名证书
+- 后续日常命令只做本地验签与机器指纹比对，不依赖在线服务
+- 删除或篡改 `~/.wxpilot/license.json` 后，CLI 会恢复到未激活状态
 
 ## 全局选项
 

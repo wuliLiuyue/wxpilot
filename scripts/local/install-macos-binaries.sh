@@ -78,6 +78,7 @@ install -m 755 "$daemon_src" "$daemon_dir/wxp-daemon"
 echo "installed target: $target"
 echo "wxpilot -> $cli_dir/wxpilot"
 echo "wxp-daemon -> $daemon_dir/wxp-daemon"
+echo "next step: run 'wxpilot activate <key>' before using release commands"
 
 if [[ ":${PATH:-}:" != *":$cli_dir:"* ]]; then
   echo "PATH hint: add the following line to your shell profile"
