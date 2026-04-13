@@ -5,8 +5,13 @@
 ## 安装
 
 ```bash
-npm install -g wxpilot
+cd rust
+cargo build -p wxp-cli --bin wxpilot
+cargo build -p wxp-daemon --bin wxp-daemon
+./target/debug/wxpilot --help
 ```
+
+当前仓库以 Rust CLI / Rust daemon 为默认实现。TypeScript CLI / daemon 代码仍保留在 `packages/`，仅作为迁移期对照实现与契约回归基线，不再作为主使用路径。
 
 ## 前置步骤
 
@@ -18,6 +23,7 @@ npm install -g wxpilot
 # 第一步：启动自动化（自动检测 dist/project.config.json，或明确指定路径）
 wxpilot start
 wxpilot start /path/to/miniprogram
+wxpilot start /path/to/miniprogram --proxy        # 抓包场景：启动项目前先自动拉起 8899 代理
 
 # appid 为占位符时
 wxpilot start /path/to/miniprogram --appid wx你的AppID
@@ -63,6 +69,8 @@ wxpilot start <projectPath>                        # 启动自动化（运行 cl
 wxpilot start <projectPath> --appid <id>           # appid 为占位符时指定
 wxpilot start <projectPath> --cli-path <path>      # 指定开发者工具 CLI 路径
 wxpilot start <projectPath> --auto-port 9421       # 指定自动化端口（默认 9420）
+wxpilot start <projectPath> --proxy                # 抓包会话：自动先启动 127.0.0.1:8899 代理
+wxpilot start <projectPath> --proxy --https        # HTTPS MITM 抓包（需先安装 CA）
 wxpilot connect                                    # 连接（使用 start 记录的端点）
 wxpilot connect --ws <wsEndpoint>                  # 直接指定 ws 端点（跳过 start）
 wxpilot disconnect
@@ -110,8 +118,9 @@ wxpilot wx <method> [args...]    # 返回 wx 方法结果
 
 ### 网络代理
 ```bash
-# 需在开发者工具手动设置代理：设置 → 代理设置 → 手动 → 127.0.0.1:8899
-wxpilot net start [--port 8899] [--https]            # --https 模式可解密 HTTPS 流量
+# 推荐：抓包时直接用 wxpilot start <projectPath> --proxy [--https]
+# 若只想单独管理代理，再使用 net.start / net.stop
+wxpilot net start [--port 8899] [--https]            # 独立启动代理；--https 模式可解密 HTTPS 流量
 wxpilot net stop
 wxpilot net log [--filter <url>] [--limit 20]         # 默认：摘要，无 body
 wxpilot net log [--filter <url>] --with-body          # 含请求/响应体（截断至 2000 字符）
@@ -143,15 +152,27 @@ wxpilot daemon restart
 
 ## 架构说明
 
-- **CLI**：Commander 命令行，自动后台启动 Daemon
-- **Daemon**：PID 锁保证单实例，JSON-RPC over Unix Domain Socket，30 分钟无操作自动退出
-- **automator**：miniprogram-automator WebSocket 连接
-- **snapshot**：WXML 解析 → 元素树 → %N 引用分配
-- **proxy**：mockttp HTTP/HTTPS 代理（支持 MITM 解密 HTTPS），请求日志存 SQLite，支持 mock 规则
+- **CLI**：`rust/crates/wxp-cli`，负责参数解析、daemon 探测/拉起、RPC 调用、输出格式化
+- **Daemon**：`rust/crates/wxp-daemon`，负责 JSON-RPC over Unix Domain Socket、运行时状态、automator、代理与存储
+- **RPC**：`rust/crates/wxp-rpc` + `rust/crates/wxp-common`
+- **snapshot / ref**：`rust/crates/wxp-snapshot` + `rust/crates/wxp-ref-store`
+- **proxy / store**：`rust/crates/wxp-proxy` + `rust/crates/wxp-store`
+
+默认 runtime 文件位于：
+
+- `~/.wxpilot/rust-daemon.sock`
+- `~/.wxpilot/rust-daemon.pid`
 
 ## 代理使用注意事项
 
-1. 开发者工具设置代理后，**工具自身的内部请求也走代理**；必须保证代理在运行，否则 `wxpilot start` 会报 `cli auto 失败 Failed to fetch`
-2. 若忘记启动代理就执行了 `wxpilot start`，daemon 会自动检测并启动 HTTP 模式代理后重试
-3. `net install-ca` 安装后必须**完全重启**开发者工具才生效
-4. HTTP 模式下 HTTPS 请求透明隧道放行（不记录）；要记录 HTTPS 流量必须用 `--https` 模式
+1. 开发者工具设置代理后，**工具自身的内部请求也走代理**；若代理未运行，页面可能直接报 `TypeError: Failed to fetch`
+2. 抓包场景优先使用 `wxpilot start <projectPath> --proxy`，让 `start` 在同一会话里自动确保 `127.0.0.1:8899` 代理已启动
+3. `start` 里仍保留了“代理错误时自动兜底重试”的兼容逻辑，但它不是主流程，不应替代显式 `--proxy`
+4. `net install-ca` 安装后必须**完全重启**开发者工具才生效
+5. HTTP 模式下 HTTPS 请求透明隧道放行（不记录）；要记录 HTTPS 流量必须用 `--https` 模式
+
+## 迁移期说明
+
+- 当前主力运行链路是 Rust CLI / Rust daemon
+- `packages/cli`、`packages/daemon`、`packages/contracts` 仍保留，用于迁移期对照与契约回归
+- 若只做 Rust 主链路验证，优先使用 `cargo` / `make rust-test`

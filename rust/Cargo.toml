@@ -10,5 +10,6 @@ members = [
   "crates/wxp-ref-store",
   "crates/wxp-proxy",
   "crates/wxp-store",
+  "crates/wxp-cli",
 ]
 resolver = "2"
