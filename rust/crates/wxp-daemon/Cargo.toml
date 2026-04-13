@@ -1,0 +1,28 @@
+[package]
+name = "wxp-daemon"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "wxp-daemon"
+path = "src/main.rs"
+
+[dependencies]
+rcgen = "0.13"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "time"] }
+wxp-automator-client = { path = "../wxp-automator-client" }
+wxp-common = { path = "../wxp-common" }
+wxp-proxy = { path = "../wxp-proxy" }
+wxp-ref-store = { path = "../wxp-ref-store" }
+wxp-snapshot = { path = "../wxp-snapshot" }
+wxp-store = { path = "../wxp-store" }
+
+[dev-dependencies]
+futures-util = "0.3"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
+tokio-tungstenite = "0.24"
