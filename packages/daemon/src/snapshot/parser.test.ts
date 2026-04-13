@@ -32,6 +32,10 @@ describe('parseWxml', () => {
     const input = container.children.find((n) => n.tag === 'input')
     expect(input).toBeDefined()
     expect(input!.interactive).toBe(true)
+
+    const scrollView = container.children.find((n) => n.tag === 'scroll-view')
+    expect(scrollView).toBeDefined()
+    expect(scrollView!.interactive).toBe(true)
   })
 
   it('非交互节点 interactive 为 false', () => {
@@ -53,9 +57,10 @@ describe('assignRefs', () => {
   it('为可交互节点分配 ref，从 1 开始递增', () => {
     const tree = parseWxml(SAMPLE_WXML)
     const refs = assignRefs(tree)
-    expect(refs.size).toBeGreaterThanOrEqual(2) // button + input
+    expect(refs.size).toBeGreaterThanOrEqual(3) // button + input + scroll-view
     expect(refs.has(1)).toBe(true)
     expect(refs.has(2)).toBe(true)
+    expect(refs.has(3)).toBe(true)
   })
 
   it('ref 值与 node.ref 一致', () => {

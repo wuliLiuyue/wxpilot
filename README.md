@@ -104,6 +104,8 @@ wxpilot state [path]             # 指定子路径，如 "cart.items"
 wxpilot state --full             # 完整页面 data
 wxpilot shot [path]              # 截图，保存文件并返回路径
 wxpilot shot [path] --base64     # 截图并附带 base64
+wxpilot run <js>                 # 返回脚本执行结果
+wxpilot wx <method> [args...]    # 返回 wx 方法结果
 ```
 
 ### 网络代理
