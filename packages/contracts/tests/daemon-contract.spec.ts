@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { daemonContract } from '../src/daemon-contract.js'
 
 describe('ts daemon contract fixture', () => {
+  it('保留 TypeScript daemon 契约测试作为 Rust CLI 迁移期对照基线', () => {
+    expect(daemonContract.methods).toContain('status')
+    expect(daemonContract.errors.REF_EXPIRED).toBe(-32000)
+  })
+
   it('covers public rpc methods and internal probe methods', () => {
     expect(daemonContract.methods).toContain('status')
     expect(daemonContract.methods).toContain('find')
