@@ -13,7 +13,19 @@ cargo build -p wxp-daemon --bin wxp-daemon
 
 当前仓库以 Rust CLI / Rust daemon 为默认实现。TypeScript CLI / daemon 代码仍保留在 `packages/`，仅作为迁移期对照实现与契约回归基线，不再作为主使用路径。
 
-> 发布版需要先激活：安装后先执行 `wxpilot activate <key>`，再使用其余命令。
+> 说明：本 README 中现有安装步骤面向仓库开发者本地调试。按 `make local-install` 安装的本地产物目前仍是开发者闭环，不代表后续正式发布版的商业授权流程。
+
+## 发布版授权说明（规划中）
+
+为避免把“本地开发安装”误解为“正式发布安装即用”，后续对外发布版将引入许可证激活：
+
+- 发布版**不是安装即用**；未激活状态仅计划放行 `--help`、`--version`、`activate`
+- 用户购买后，计划通过 `wxpilot activate <key>` 完成一次联网激活
+- 激活成功后，会在本机写入本地许可证状态，后续日常命令按规划支持离线使用
+- 同一 key 按当前 PRD 规划只允许首绑一台机器；第二台机器激活会被拒绝
+- 本仓当前 `make local-build` / `make local-install` / `scripts/local/install-macos-binaries.sh` 仍只服务开发者验证，不承担正式授权发放职责
+
+正式发布前，请以专门的 release/install 文档与激活说明为准。
 
 ## 开发者本地打包与安装
 
