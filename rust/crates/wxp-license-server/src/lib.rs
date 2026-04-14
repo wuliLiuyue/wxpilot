@@ -1,12 +1,15 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use chrono::Utc;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{
+    params, Connection, Error as SqlError, ErrorCode, OptionalExtension, TransactionBehavior,
+};
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 use wxp_license::{
     hash_license_key, sign_certificate, ActivationErrorResponse, ActivationRequest,
-    ActivationResponse, LicenseCertificate, SignedLicenseCertificate, DEFAULT_DEV_PRIVATE_KEY_HEX,
+    ActivationResponse, LicenseCertificate, SignedLicenseCertificate,
 };
 
 #[derive(Debug, Clone)]
@@ -18,23 +21,23 @@ pub struct ServerConfig {
 }
 
 impl ServerConfig {
-    pub fn from_env() -> Self {
+    pub fn from_env() -> Result<Self, ServerError> {
         let bind_addr =
             std::env::var("WXP_LICENSE_SERVER_ADDR").unwrap_or_else(|_| "127.0.0.1:8787".into());
         let database_path = std::env::var_os("WXP_LICENSE_DB")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(".wxpilot-license/license.db"));
         let private_key_hex = std::env::var("WXP_LICENSE_PRIVATE_KEY_HEX")
-            .unwrap_or_else(|_| DEFAULT_DEV_PRIVATE_KEY_HEX.into());
+            .map_err(|_| ServerError::MissingConfig("WXP_LICENSE_PRIVATE_KEY_HEX".into()))?;
         let certificate_key_id =
             std::env::var("WXP_LICENSE_KEY_ID").unwrap_or_else(|_| "dev".into());
 
-        Self {
+        Ok(Self {
             bind_addr,
             database_path,
             private_key_hex,
             certificate_key_id,
-        }
+        })
     }
 }
 
@@ -43,6 +46,7 @@ pub enum ServerError {
     Database(String),
     Http(String),
     InvalidRequest(String),
+    MissingConfig(String),
     InvalidLicenseKey,
     InactiveLicense,
     AlreadyBound,
@@ -55,6 +59,7 @@ impl std::fmt::Display for ServerError {
             Self::Database(message) => write!(f, "database error: {message}"),
             Self::Http(message) => write!(f, "http error: {message}"),
             Self::InvalidRequest(message) => write!(f, "invalid request: {message}"),
+            Self::MissingConfig(name) => write!(f, "missing required config: {name}"),
             Self::InvalidLicenseKey => f.write_str("license key does not exist"),
             Self::InactiveLicense => f.write_str("license is inactive"),
             Self::AlreadyBound => f.write_str("license key already bound to another machine"),
@@ -137,8 +142,11 @@ pub fn activate(
     init_db(&config.database_path)?;
     let mut connection = Connection::open(&config.database_path)
         .map_err(|error| ServerError::Database(error.to_string()))?;
+    connection
+        .busy_timeout(Duration::from_secs(1))
+        .map_err(|error| ServerError::Database(error.to_string()))?;
     let transaction = connection
-        .transaction()
+        .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|error| ServerError::Database(error.to_string()))?;
     let key_hash = hash_license_key(&request.license_key);
 
@@ -175,8 +183,7 @@ pub fn activate(
         }
         Some(_) => {}
         None => {
-            transaction
-                .execute(
+            match transaction.execute(
                     "INSERT INTO activations (license_id, machine_fingerprint, activated_at, certificate_key_id) VALUES (?1, ?2, ?3, ?4)",
                     params![
                         license.0,
@@ -184,8 +191,27 @@ pub fn activate(
                         Utc::now().to_rfc3339(),
                         config.certificate_key_id
                     ],
-                )
-                .map_err(|error| ServerError::Database(error.to_string()))?;
+                ) {
+                Ok(_) => {}
+                Err(error) if is_unique_constraint(&error) => {
+                    let rebound_machine = transaction
+                        .query_row(
+                            "SELECT machine_fingerprint FROM activations WHERE license_id = ?1",
+                            params![license.0],
+                            |row| row.get::<_, String>(0),
+                        )
+                        .optional()
+                        .map_err(|query_error| ServerError::Database(query_error.to_string()))?;
+                    match rebound_machine {
+                        Some(machine) if machine != request.machine_fingerprint => {
+                            return Err(ServerError::AlreadyBound);
+                        }
+                        Some(_) => {}
+                        None => return Err(ServerError::Database(error.to_string())),
+                    }
+                }
+                Err(error) => return Err(ServerError::Database(error.to_string())),
+            }
         }
     }
 
@@ -204,6 +230,14 @@ pub fn activate(
 
     sign_certificate(&payload, &config.private_key_hex)
         .map_err(|error| ServerError::Signing(error.to_string()))
+}
+
+fn is_unique_constraint(error: &SqlError) -> bool {
+    matches!(
+        error,
+        SqlError::SqliteFailure(details, _)
+            if details.code == ErrorCode::ConstraintViolation
+    )
 }
 
 fn handle_request(config: &ServerConfig, mut request: Request) -> Result<(), ServerError> {
@@ -269,7 +303,10 @@ fn error_response(error: &ServerError) -> (StatusCode, ActivationErrorResponse) 
                 message: error.to_string(),
             },
         ),
-        ServerError::Database(_) | ServerError::Http(_) | ServerError::Signing(_) => (
+        ServerError::Database(_)
+        | ServerError::Http(_)
+        | ServerError::MissingConfig(_)
+        | ServerError::Signing(_) => (
             StatusCode(500),
             ActivationErrorResponse {
                 error: "internal_error".into(),
