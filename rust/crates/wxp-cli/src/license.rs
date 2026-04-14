@@ -7,8 +7,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use wxp_license::{
     verify_certificate, ActivationErrorResponse, ActivationRequest, ActivationResponse,
-    SignedLicenseCertificate, DEFAULT_DEV_PUBLIC_KEY_HEX,
+    SignedLicenseCertificate,
 };
+#[cfg(debug_assertions)]
+use wxp_license::test_keys::PUBLIC_KEY_HEX as DEBUG_EMBEDDED_PUBLIC_KEY_HEX;
 
 use crate::error::CliError;
 
@@ -31,7 +33,10 @@ pub fn ensure_license() -> Result<(), CliError> {
     }
 
     let stored = load_stored_license()?;
-    verify_certificate(&stored.certificate, &license_public_key_hex())
+    verify_certificate(
+        &stored.certificate,
+        embedded_public_key_hex().map_err(CliError::LicenseInvalid)?,
+    )
         .map_err(|error| CliError::LicenseInvalid(error.to_string()))?;
 
     let current_machine = machine_fingerprint()?;
@@ -77,9 +82,15 @@ pub fn activate_license(key: &str) -> Result<ActivationResult, CliError> {
         Err(error) => return Err(CliError::ActivationFailed(error.to_string())),
     };
 
-    verify_certificate(&certificate, &license_public_key_hex()).map_err(|error| {
+    verify_certificate(&certificate, embedded_public_key_hex().map_err(CliError::ActivationFailed)?)
+        .map_err(|error| {
         CliError::ActivationFailed(format!("服务端返回的证书校验失败：{error}"))
     })?;
+    if certificate.payload.machine_fingerprint != machine_fingerprint {
+        return Err(CliError::ActivationFailed(
+            "服务端返回的证书与当前机器不匹配".into(),
+        ));
+    }
 
     let path = persist_certificate(certificate.clone())?;
     Ok(ActivationResult {
@@ -118,8 +129,17 @@ fn license_server_url() -> String {
     env::var("WXP_LICENSE_SERVER_URL").unwrap_or_else(|_| "http://127.0.0.1:8787".into())
 }
 
-fn license_public_key_hex() -> String {
-    env::var("WXP_LICENSE_PUBLIC_KEY_HEX").unwrap_or_else(|_| DEFAULT_DEV_PUBLIC_KEY_HEX.into())
+fn embedded_public_key_hex() -> Result<&'static str, String> {
+    #[cfg(debug_assertions)]
+    {
+        return Ok(DEBUG_EMBEDDED_PUBLIC_KEY_HEX);
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        option_env!("WXP_LICENSE_EMBEDDED_PUBLIC_KEY_HEX")
+            .ok_or_else(|| "当前构建缺少内嵌授权公钥".into())
+    }
 }
 
 fn runtime_dir() -> PathBuf {
@@ -130,32 +150,15 @@ fn runtime_dir() -> PathBuf {
 }
 
 fn machine_fingerprint() -> Result<String, CliError> {
-    if let Some(value) = env::var_os("WXP_LICENSE_MACHINE_ID") {
+    #[cfg(debug_assertions)]
+    if let Some(value) = env::var_os("WXP_LICENSE_TEST_MACHINE_ID") {
         return Ok(hash_machine_identity(&value.to_string_lossy()));
     }
 
-    let hostname = hostname().unwrap_or_else(|| "unknown-host".into());
-    let user = env::var("USER").unwrap_or_else(|_| "unknown-user".into());
-    let identity = format!(
-        "host={hostname};user={user};os={};arch={}",
-        env::consts::OS,
-        env::consts::ARCH
-    );
+    let identity = platform_machine_identity().ok_or_else(|| {
+        CliError::Message("无法读取机器唯一标识，当前平台不能执行离线授权校验".into())
+    })?;
     Ok(hash_machine_identity(&identity))
-}
-
-fn hostname() -> Option<String> {
-    let output = Command::new("hostname").output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let value = String::from_utf8(output.stdout).ok()?;
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
 }
 
 fn hash_machine_identity(raw: &str) -> String {
@@ -164,10 +167,67 @@ fn hash_machine_identity(raw: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
+#[cfg(target_os = "macos")]
+fn platform_machine_identity() -> Option<String> {
+    let output = Command::new("ioreg")
+        .args(["-rd1", "-c", "IOPlatformExpertDevice"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8(output.stdout).ok()?;
+    extract_quoted_value(&stdout, "\"IOPlatformUUID\" = \"")
+}
+
+#[cfg(target_os = "linux")]
+fn platform_machine_identity() -> Option<String> {
+    for path in ["/etc/machine-id", "/var/lib/dbus/machine-id"] {
+        let value = fs::read_to_string(path).ok()?;
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn platform_machine_identity() -> Option<String> {
+    let output = Command::new("wmic")
+        .args(["csproduct", "get", "UUID"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8(output.stdout).ok()?;
+    stdout
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty() && *line != "UUID")
+        .map(ToOwned::to_owned)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+fn platform_machine_identity() -> Option<String> {
+    None
+}
+
+#[cfg(target_os = "macos")]
+fn extract_quoted_value(raw: &str, prefix: &str) -> Option<String> {
+    raw.lines().find_map(|line| {
+        let start = line.find(prefix)? + prefix.len();
+        let rest = &line[start..];
+        let end = rest.find('"')?;
+        Some(rest[..end].to_string())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{hash_machine_identity, StoredLicense};
-    use wxp_license::{sign_certificate, LicenseCertificate, DEFAULT_DEV_PRIVATE_KEY_HEX};
+    use wxp_license::{sign_certificate, test_keys::PRIVATE_KEY_HEX, LicenseCertificate};
 
     #[test]
     fn machine_identity_is_hashed() {
@@ -184,8 +244,7 @@ mod tests {
             issued_at: "2026-04-13T00:00:00Z".into(),
             client_version: "0.1.0".into(),
         };
-        let certificate =
-            sign_certificate(&payload, DEFAULT_DEV_PRIVATE_KEY_HEX).expect("sign certificate");
+        let certificate = sign_certificate(&payload, PRIVATE_KEY_HEX).expect("sign certificate");
         let stored = StoredLicense { certificate };
         let json = serde_json::to_string(&stored).expect("serialize");
         let round_trip: StoredLicense = serde_json::from_str(&json).expect("deserialize");

@@ -1,7 +1,13 @@
 use std::collections::BTreeSet;
+use std::fs;
 
 use assert_cmd::Command;
+use predicates::prelude::*;
 use tempfile::tempdir;
+use tiny_http::StatusCode;
+use wxp_license::ActivationErrorResponse;
+
+mod support;
 
 #[derive(Debug)]
 struct ScenarioSpec {
@@ -68,9 +74,10 @@ fn prd_acceptance_matrix_covers_all_license_requirements() {
 }
 
 #[test]
-#[ignore = "等待 worker-1 落地授权实现后启用"]
 fn allows_help_version_and_activate_without_local_license() {
     let home = tempdir().expect("tempdir");
+    let machine_id = "plan-activate-machine";
+    let (addr, handle) = support::spawn_activation_server_with_certificate(machine_id);
 
     Command::cargo_bin("wxpilot")
         .expect("binary")
@@ -89,60 +96,126 @@ fn allows_help_version_and_activate_without_local_license() {
     Command::cargo_bin("wxpilot")
         .expect("binary")
         .env("HOME", home.path())
+        .env("WXP_LICENSE_TEST_MACHINE_ID", machine_id)
+        .env("WXP_LICENSE_SERVER_URL", format!("http://{addr}"))
         .args(["activate", "demo-license-key"])
         .assert()
-        .success();
+        .success()
+        .stdout(predicate::str::contains("激活成功"));
+
+    handle.join().expect("join activation server");
 }
 
 #[test]
-#[ignore = "等待 worker-1 落地授权实现后启用"]
 fn blocks_restricted_commands_when_license_is_missing() {
     let home = tempdir().expect("tempdir");
 
     Command::cargo_bin("wxpilot")
         .expect("binary")
         .env("HOME", home.path())
+        .env("USER", "plan-missing-user")
         .arg("status")
         .assert()
-        .failure();
+        .failure()
+        .stderr(predicate::str::contains("当前发布版需要先激活"));
 }
 
 #[test]
-#[ignore = "等待 worker-1 落地授权实现后启用"]
 fn persists_license_after_activation_and_supports_offline_use() {
-    // 预期流程：
-    // 1. 启动本地激活桩服务，返回签名证书。
-    // 2. 执行 `wxpilot activate <key>` 成功。
-    // 3. 验证 ~/.wxpilot/license.json 存在且包含可离线校验字段。
-    // 4. 关闭激活服务后再次执行受限命令，命令仍可通过门禁。
-    todo!("activation happy path pending implementation");
+    let machine_id = "plan-offline-machine";
+    let (addr, handle) = support::spawn_activation_server_with_certificate(machine_id);
+
+    let home = tempdir().expect("tempdir");
+    Command::cargo_bin("wxpilot")
+        .expect("binary")
+        .env("HOME", home.path())
+        .env("WXP_LICENSE_TEST_MACHINE_ID", machine_id)
+        .env("WXP_LICENSE_SERVER_URL", format!("http://{addr}"))
+        .args(["activate", "demo-license-key"])
+        .assert()
+        .success();
+    handle.join().expect("join activation server");
+
+    let license_path = home.path().join(".wxpilot").join("license.json");
+    assert!(license_path.exists(), "license file should exist after activation");
+
+    let daemon = support::spawn_status_daemon(home.path());
+    Command::cargo_bin("wxpilot")
+        .expect("binary")
+        .env("HOME", home.path())
+        .env("WXP_LICENSE_TEST_MACHINE_ID", machine_id)
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("daemonKind=\"rust\""));
+    daemon.join().expect("join daemon");
 }
 
 #[test]
-#[ignore = "等待 worker-1 落地授权实现后启用"]
 fn rejects_second_machine_activation_for_same_key() {
-    // 预期流程：
-    // 1. machine-A 首次激活成功。
-    // 2. machine-B 使用同一 key 再次激活。
-    // 3. CLI 显示后端拒绝信息且不落地本地证书。
-    todo!("single-machine binding pending implementation");
+    let (addr, handle) = support::spawn_activation_server_once(
+        StatusCode(409),
+        ActivationErrorResponse {
+            error: "already_bound".into(),
+            message: "license key already bound to another machine".into(),
+        },
+    );
+
+    let home = tempdir().expect("tempdir");
+    Command::cargo_bin("wxpilot")
+        .expect("binary")
+        .env("HOME", home.path())
+        .env("WXP_LICENSE_TEST_MACHINE_ID", "plan-second-machine")
+        .env("WXP_LICENSE_SERVER_URL", format!("http://{addr}"))
+        .args(["activate", "demo-license-key"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "license key already bound to another machine",
+        ));
+    assert!(!home.path().join(".wxpilot").join("license.json").exists());
+
+    handle.join().expect("join activation server");
 }
 
 #[test]
-#[ignore = "等待 worker-1 落地授权实现后启用"]
 fn rejects_tampered_or_deleted_local_license() {
-    // 预期流程：
-    // 1. 先准备一个有效激活态。
-    // 2. 篡改证书任意字段或删除证书文件。
-    // 3. `status` / `start` / `connect` 等受限命令重新被门禁拦截。
-    todo!("tamper/delete certificate pending implementation");
+    let machine_id = "plan-tampered-machine";
+    let home = tempdir().expect("tempdir");
+    support::write_license(home.path(), machine_id);
+    let license_path = home.path().join(".wxpilot").join("license.json");
+
+    let raw = fs::read_to_string(&license_path).expect("read license");
+    fs::write(&license_path, raw.replace("lic_test", "lic_other")).expect("write tampered");
+
+    Command::cargo_bin("wxpilot")
+        .expect("binary")
+        .env("HOME", home.path())
+        .env("WXP_LICENSE_TEST_MACHINE_ID", machine_id)
+        .arg("status")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("本地激活凭证无效"));
+
+    fs::remove_file(&license_path).expect("delete license");
+    Command::cargo_bin("wxpilot")
+        .expect("binary")
+        .env("HOME", home.path())
+        .env("WXP_LICENSE_TEST_MACHINE_ID", machine_id)
+        .arg("status")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("当前发布版需要先激活"));
 }
 
 #[test]
-#[ignore = "等待 worker-3 更新文档后启用"]
 fn release_docs_explicitly_call_out_activation_requirement() {
-    // 预期校验 README 和安装说明：
-    // - 发布版需要先激活
-    // - 安装完成不等于可直接使用
-    todo!("release docs activation note pending documentation update");
+    let readme = fs::read_to_string(
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../../../README.md"),
+    )
+    .expect("read README");
+
+    assert!(readme.contains("发布版**不是安装即用**"));
+    assert!(readme.contains("开发者验证"));
+    assert!(readme.contains("不承担正式授权发放职责"));
 }

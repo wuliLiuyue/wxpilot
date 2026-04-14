@@ -3,10 +3,14 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 pub const CERTIFICATE_VERSION: u32 = 1;
-pub const DEFAULT_DEV_PRIVATE_KEY_HEX: &str =
-    "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
-pub const DEFAULT_DEV_PUBLIC_KEY_HEX: &str =
-    "79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664";
+
+#[cfg(debug_assertions)]
+pub mod test_keys {
+    pub const PRIVATE_KEY_HEX: &str =
+        "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+    pub const PUBLIC_KEY_HEX: &str =
+        "79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664";
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -131,14 +135,13 @@ fn decode_hex_fixed<const N: usize>(raw: &str) -> Result<[u8; N], LicenseError> 
 mod tests {
     use super::{
         derive_public_key_hex, sign_certificate, verify_certificate, LicenseCertificate,
-        DEFAULT_DEV_PRIVATE_KEY_HEX, DEFAULT_DEV_PUBLIC_KEY_HEX,
     };
+    use crate::test_keys::{PRIVATE_KEY_HEX, PUBLIC_KEY_HEX};
 
     #[test]
     fn default_dev_key_pair_matches() {
-        let derived =
-            derive_public_key_hex(DEFAULT_DEV_PRIVATE_KEY_HEX).expect("derive public key");
-        assert_eq!(derived, DEFAULT_DEV_PUBLIC_KEY_HEX);
+        let derived = derive_public_key_hex(PRIVATE_KEY_HEX).expect("derive public key");
+        assert_eq!(derived, PUBLIC_KEY_HEX);
     }
 
     #[test]
@@ -152,8 +155,7 @@ mod tests {
             client_version: "0.1.0".into(),
         };
 
-        let certificate =
-            sign_certificate(&payload, DEFAULT_DEV_PRIVATE_KEY_HEX).expect("sign certificate");
-        verify_certificate(&certificate, DEFAULT_DEV_PUBLIC_KEY_HEX).expect("verify");
+        let certificate = sign_certificate(&payload, PRIVATE_KEY_HEX).expect("sign certificate");
+        verify_certificate(&certificate, PUBLIC_KEY_HEX).expect("verify");
     }
 }
