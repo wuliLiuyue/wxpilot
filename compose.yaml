@@ -1,0 +1,21 @@
+services:
+  wxp-license-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wxp-license-server
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      WXP_LICENSE_SERVER_ADDR: 0.0.0.0:8787
+      WXP_LICENSE_DB: /data/license.db
+      WXP_LICENSE_PRIVATE_KEY_HEX: ${WXP_LICENSE_PRIVATE_KEY_HEX}
+      WXP_LICENSE_KEY_ID: ${WXP_LICENSE_KEY_ID:-dev}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8787/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - ./data:/data

@@ -18,6 +18,10 @@ Usage: build-macos-binaries.sh [--all] [--target <triple>]
 Options:
   --all                     Build aarch64-apple-darwin and x86_64-apple-darwin
   --target <triple>         Build a single macOS target
+
+Required environment variables for release CLI:
+  WXP_LICENSE_EMBEDDED_PUBLIC_KEY_HEX
+  WXP_LICENSE_SERVER_URL
 EOF
 }
 
@@ -52,6 +56,21 @@ if [[ "$("$uname_bin" -s)" != "Darwin" ]]; then
   echo "local macOS build only supports Darwin hosts" >&2
   exit 1
 fi
+
+require_release_env() {
+  local missing=()
+
+  [[ -n "${WXP_LICENSE_EMBEDDED_PUBLIC_KEY_HEX:-}" ]] || missing+=("WXP_LICENSE_EMBEDDED_PUBLIC_KEY_HEX")
+  [[ -n "${WXP_LICENSE_SERVER_URL:-}" ]] || missing+=("WXP_LICENSE_SERVER_URL")
+
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "missing required release env: ${missing[*]}" >&2
+    echo "set the embedded public key and activation server URL before building wxpilot release binaries" >&2
+    exit 1
+  fi
+}
+
+require_release_env
 
 check_target_installed() {
   local target="$1"

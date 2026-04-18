@@ -13,25 +13,20 @@ cargo build -p wxp-daemon --bin wxp-daemon
 
 当前仓库以 Rust CLI / Rust daemon 为默认实现。TypeScript CLI / daemon 代码仍保留在 `packages/`，仅作为迁移期对照实现与契约回归基线，不再作为主使用路径。
 
-> 说明：本 README 中现有安装步骤面向仓库开发者本地调试。按 `make local-install` 安装的本地产物目前仍是开发者闭环，不代表后续正式发布版的商业授权流程。
-
-## 发布版授权说明
-
-为避免把“本地开发安装”误解为“正式发布安装即用”，发布版授权链路按当前实现约定如下：
-
-- 发布版**不是安装即用**；未激活状态仅放行 `--help`、`--version`、`activate`
-- 用户购买后，通过 `wxpilot activate <key>` 完成一次联网激活
-- 激活成功后，会在本机写入本地许可证状态，后续日常命令支持离线使用
-- 同一 key 当前实现只允许首绑一台机器；第二台机器激活会被拒绝
-- 本仓当前 `make local-build` / `make local-install` / `scripts/local/install-macos-binaries.sh` 仍只服务开发者验证，不承担正式授权发放职责
-
-正式发布时，仍应以专门的 release/install 文档与密钥配置为准。
+> 说明：本 README 同时覆盖两条使用路径。
+> 1. 上面的 `cargo build` 面向仓库开发者本地调试。
+> 2. 下文的 `make local-build` / `make local-install` 仅用于开发者验证发布构建，不等于正式对外发布安装流程。
+> 正式发布版的授权限制、激活方式和部署入口统一见后文“授权与激活”“License 服务部署”。
 
 ## 开发者本地打包与安装
 
 面向仓库开发者的本地闭环，不是正式发布安装方案。
 
 ```bash
+# 发布版本地打包前，必须先注入激活服务地址与授权公钥
+export WXP_LICENSE_SERVER_URL="https://license.example.com"
+export WXP_LICENSE_EMBEDDED_PUBLIC_KEY_HEX="<public-key-hex>"
+
 # 先构建 macOS arm64 / x86_64 本地二进制
 make local-build
 
@@ -60,6 +55,8 @@ make local-install-test
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
+
+如果缺少上述两个环境变量，`make local-build` 会直接失败，避免产出无法激活的发布包。
 
 ## 前置步骤
 
@@ -164,8 +161,6 @@ wxpilot state [path]             # 指定子路径，如 "cart.items"
 wxpilot state --full             # 完整页面 data
 wxpilot shot [path]              # 截图，保存文件并返回路径
 wxpilot shot [path] --base64     # 截图并附带 base64
-wxpilot run <js>                 # 返回脚本执行结果
-wxpilot wx <method> [args...]    # 返回 wx 方法结果
 ```
 
 ### 网络代理
@@ -196,10 +191,39 @@ wxpilot daemon restart
 
 ## 授权与激活
 
-- 未激活时仅允许 `wxpilot activate <key>`、`wxpilot --help`、`wxpilot --version`
+- 发布版**不是安装即用**；未激活时仅允许 `wxpilot activate <key>`、`wxpilot --help`、`wxpilot --version`
+- 用户购买后，通过 `wxpilot activate <key>` 完成一次联网激活
+- 发布版 CLI 在构建时必须内嵌激活服务地址 `WXP_LICENSE_SERVER_URL` 与授权公钥 `WXP_LICENSE_EMBEDDED_PUBLIC_KEY_HEX`
+- 本仓当前 `make local-build` / `make local-install` / `scripts/local/install-macos-binaries.sh` 仍只服务开发者验证，不承担正式授权发放职责
 - 激活成功后会在 `~/.wxpilot/license.json` 落地本机绑定的签名证书
+- 同一 key 当前实现只允许首绑一台机器；第二台机器激活会被拒绝
 - 后续日常命令只做本地验签与机器指纹比对，不依赖在线服务
 - 删除或篡改 `~/.wxpilot/license.json` 后，CLI 会恢复到未激活状态
+
+## License 服务部署
+
+当前推荐的最小上线方案是 `docker compose + wxp-license-server + SQLite volume`，不单独拆 MySQL。README 只保留高频入口，低层 docker/script 细节统一放到部署文档。
+
+```bash
+make license-compose-up
+make license-compose-ps
+make license-compose-logs
+make license-init-test-env KEY=lic-e2e-001
+make license-seed DB=./data/license.db KEY=lic-e2e-001
+make license-backup DB=./data/license.db
+```
+
+### 真机回归前置
+
+1. 用发布构建环境变量重新执行 `make local-build && make local-install`
+2. 用 `make license-init-test-env KEY=<key>` 完成服务启动、健康检查和测试 key 初始化
+3. 在真机上执行 `wxpilot activate <key>`
+4. 激活后按 README 命令表回归所有受限命令
+
+更完整的部署与备份说明见 [docs/license-server-deploy.md](docs/license-server-deploy.md)。
+真机回归记录模板见 [docs/license-real-device-regression-checklist.md](docs/license-real-device-regression-checklist.md)。
+完整发布串联、上线检查与回滚说明见 [docs/license-release-runbook.md](docs/license-release-runbook.md)。
+授权证书与激活接口契约见 [packages/contracts/docs/license-activation-adr.md](packages/contracts/docs/license-activation-adr.md)。
 
 ## 全局选项
 
@@ -229,9 +253,3 @@ wxpilot daemon restart
 3. `start` 里仍保留了“代理错误时自动兜底重试”的兼容逻辑，但它不是主流程，不应替代显式 `--proxy`
 4. `net install-ca` 安装后必须**完全重启**开发者工具才生效
 5. HTTP 模式下 HTTPS 请求透明隧道放行（不记录）；要记录 HTTPS 流量必须用 `--https` 模式
-
-## 迁移期说明
-
-- 当前主力运行链路是 Rust CLI / Rust daemon
-- `packages/cli`、`packages/daemon`、`packages/contracts` 仍保留，用于迁移期对照与契约回归
-- 若只做 Rust 主链路验证，优先使用 `cargo` / `make rust-test`

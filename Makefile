@@ -1,4 +1,4 @@
-.PHONY: build test lint rust-cli-build rust-cli-help rust-test local-build local-install local-install-test local-install-all
+.PHONY: build test lint rust-cli-build rust-cli-help rust-test local-build local-install local-install-test local-install-all license-compose-up license-compose-down license-compose-logs license-compose-ps license-seed license-backup license-init-test-env release-env-test
 
 build:
 	pnpm build
@@ -28,10 +28,46 @@ local-install:
 local-install-test:
 	cd rust && cargo test -p wxp-cli locate_daemon_binary_ -- --nocapture
 	cd rust && cargo test -p wxp-cli --test readme_migration
-	bash tests/install/local_build_smoke.sh
-	bash tests/install/local_install_smoke.sh
-	bash tests/install/local_doc_smoke.sh
+	bash scripts/verify/local-build-smoke.sh
+	bash scripts/verify/release-env-smoke.sh
+	bash scripts/verify/local-install-smoke.sh
 
 local-install-all:
 	$(MAKE) local-build
 	$(MAKE) local-install
+
+license-compose-up:
+	bash scripts/license/deploy-compose.sh up
+
+license-compose-down:
+	bash scripts/license/deploy-compose.sh down
+
+license-compose-logs:
+	bash scripts/license/deploy-compose.sh logs
+
+license-compose-ps:
+	bash scripts/license/deploy-compose.sh ps
+
+license-seed:
+	@if [ -z "$(DB)" ] || [ -z "$(KEY)" ]; then \
+		echo "usage: make license-seed DB=./data/license.db KEY=lic-e2e-001 [STATUS=active]" >&2; \
+		exit 1; \
+	fi
+	bash scripts/license/seed-sqlite-license.sh "$(DB)" "$(KEY)" "$(or $(STATUS),active)"
+
+license-backup:
+	@if [ -z "$(DB)" ]; then \
+		echo "usage: make license-backup DB=./data/license.db [ENV_FILE=./.env] [OUT_DIR=./backups]" >&2; \
+		exit 1; \
+	fi
+	bash scripts/license/backup-sqlite-license.sh "$(DB)" "$(or $(ENV_FILE),./.env)" "$(or $(OUT_DIR),./backups)"
+
+license-init-test-env:
+	@if [ -z "$(KEY)" ]; then \
+		echo "usage: make license-init-test-env KEY=lic-e2e-001 [DB=./data/license.db]" >&2; \
+		exit 1; \
+	fi
+	bash scripts/license/init-test-env.sh "$(KEY)" "$(or $(DB),./data/license.db)"
+
+release-env-test:
+	bash scripts/verify/release-env-smoke.sh
