@@ -218,4 +218,6 @@ fn release_docs_explicitly_call_out_activation_requirement() {
     assert!(readme.contains("发布版**不是安装即用**"));
     assert!(readme.contains("开发者验证"));
     assert!(readme.contains("不承担正式授权发放职责"));
+    assert!(readme.contains("WXP_LICENSE_SERVER_URL"));
+    assert!(readme.contains("wxpilot activate <key>"));
 }

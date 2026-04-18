@@ -240,8 +240,16 @@ fn is_unique_constraint(error: &SqlError) -> bool {
     )
 }
 
+fn health_payload(config: &ServerConfig) -> serde_json::Value {
+    serde_json::json!({
+        "ok": true,
+        "databasePath": config.database_path.display().to_string(),
+    })
+}
+
 fn handle_request(config: &ServerConfig, mut request: Request) -> Result<(), ServerError> {
     match (request.method(), request.url()) {
+        (&Method::Get, "/healthz") => respond_json(request, StatusCode(200), &health_payload(config)),
         (&Method::Post, "/v1/activate") => {
             let mut body = String::new();
             request
@@ -331,4 +339,29 @@ fn respond_json<T: serde::Serialize>(
                 .with_header(header),
         )
         .map_err(|error| ServerError::Http(error.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::{health_payload, ServerConfig};
+
+    #[test]
+    fn health_payload_reports_ok_and_database_path() {
+        let config = ServerConfig {
+            bind_addr: "127.0.0.1:8787".into(),
+            database_path: PathBuf::from("/tmp/license.db"),
+            private_key_hex: "deadbeef".into(),
+            certificate_key_id: "dev".into(),
+        };
+
+        let payload = health_payload(&config);
+
+        assert_eq!(payload.get("ok").and_then(serde_json::Value::as_bool), Some(true));
+        assert_eq!(
+            payload.get("databasePath").and_then(serde_json::Value::as_str),
+            Some("/tmp/license.db")
+        );
+    }
 }

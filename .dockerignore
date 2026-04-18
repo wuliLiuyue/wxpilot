@@ -1,0 +1,9 @@
+.git
+.omx
+.codex
+node_modules
+packages
+dist
+rust/target
+tmp
+data

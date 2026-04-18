@@ -4,6 +4,8 @@
 
 - 发布版仅放行 `--help`、`--version`、`activate`
 - `wxpilot activate <key>` 联网调用激活服务
+- 发布版 CLI 在编译期固化 `WXP_LICENSE_SERVER_URL`
+- 发布版 CLI 在编译期固化 `WXP_LICENSE_EMBEDDED_PUBLIC_KEY_HEX`
 - 服务端首绑机器后返回签名证书
 - CLI 将证书保存到 `~/.wxpilot/license.json`
 - 后续所有受限命令仅做本地验签和机器指纹比对
