@@ -38,6 +38,12 @@ pub struct RenderResult {
     pub total_count: usize,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct InteractiveHints {
+    pub event_fingerprints: HashSet<String>,
+    pub sid_hints: HashSet<String>,
+}
+
 const INTERACTIVE_TAGS: &[&str] = &[
     "button",
     "input",
@@ -76,7 +82,7 @@ struct RawNode {
 pub fn parse_wxml(
     source: &str,
     max_depth: usize,
-    event_fingerprints: Option<&HashSet<String>>,
+    hints: Option<&InteractiveHints>,
 ) -> Vec<ElementNode> {
     let raw_nodes = parse_raw_nodes(source);
     let mut roots = Vec::new();
@@ -90,7 +96,7 @@ pub fn parse_wxml(
             idx,
             0,
             max_depth,
-            event_fingerprints,
+            hints,
         ) {
             roots.push(node);
             idx += 1;
@@ -99,6 +105,33 @@ pub fn parse_wxml(
 
     assign_refs(&mut roots);
     roots
+}
+
+pub fn extract_event_fingerprints(source: &str) -> HashSet<String> {
+    fn walk(node: &RawNode, fingerprints: &mut HashSet<String>) {
+        let has_event = INTERACTIVE_ATTRS
+            .iter()
+            .any(|attr| node.attrs.contains_key(*attr));
+        if has_event {
+            if let Some(class_attr) = node.attrs.get("class") {
+                let normalized = normalize_class_list(class_attr);
+                if !normalized.is_empty() {
+                    fingerprints.insert(format!("{}:{}", node.tag, normalized.join(",")));
+                }
+            }
+        }
+
+        for child in &node.children {
+            walk(child, fingerprints);
+        }
+    }
+
+    let raw_nodes = parse_raw_nodes(source);
+    let mut fingerprints = HashSet::new();
+    for node in &raw_nodes {
+        walk(node, &mut fingerprints);
+    }
+    fingerprints
 }
 
 pub fn assign_refs(nodes: &mut [ElementNode]) {
@@ -406,7 +439,7 @@ fn build_element_node(
     sibling_index: usize,
     depth: usize,
     max_depth: usize,
-    event_fingerprints: Option<&HashSet<String>>,
+    hints: Option<&InteractiveHints>,
 ) -> Option<ElementNode> {
     if matches!(raw.tag.as_str(), "wxs" | "script" | "style") || is_devtools_overlay_node(raw) {
         return None;
@@ -436,14 +469,9 @@ fn build_element_node(
     if depth < max_depth {
         let mut child_index = 0;
         for child in &raw.children {
-            if let Some(node) = build_element_node(
-                child,
-                &selector,
-                child_index,
-                depth + 1,
-                max_depth,
-                event_fingerprints,
-            ) {
+            if let Some(node) =
+                build_element_node(child, &selector, child_index, depth + 1, max_depth, hints)
+            {
                 children.push(node);
                 child_index += 1;
             }
@@ -456,11 +484,21 @@ fn build_element_node(
         text,
         placeholder,
         attrs,
-        interactive: is_interactive(&raw.tag, &raw.attrs, &classes, event_fingerprints),
+        interactive: is_interactive(&raw.tag, &raw.attrs, &classes, hints),
         selector,
         ref_id: None,
         children,
     })
+}
+
+fn normalize_class_list(class_attr: &str) -> Vec<String> {
+    let mut classes = class_attr
+        .split_whitespace()
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    classes.sort();
+    classes
 }
 
 fn should_ignore_text_fragment(text: &str) -> bool {
@@ -523,7 +561,7 @@ fn is_interactive(
     tag: &str,
     attrs: &BTreeMap<String, String>,
     classes: &[String],
-    event_fingerprints: Option<&HashSet<String>>,
+    hints: Option<&InteractiveHints>,
 ) -> bool {
     if INTERACTIVE_TAGS.contains(&tag) {
         return true;
@@ -539,6 +577,14 @@ fn is_interactive(
         return true;
     }
 
+    if let Some(hints) = hints {
+        if let Some(sid) = attrs.get("data-sid") {
+            if hints.sid_hints.contains(sid) {
+                return true;
+            }
+        }
+    }
+
     for key in attrs.keys() {
         if !key.starts_with("data-") {
             continue;
@@ -549,12 +595,12 @@ fn is_interactive(
         return true;
     }
 
-    if let Some(fingerprints) = event_fingerprints {
+    if let Some(hints) = hints {
         if !classes.is_empty() {
             let mut normalized = classes.to_vec();
             normalized.sort();
             let fingerprint = format!("{tag}:{}", normalized.join(","));
-            return fingerprints.contains(&fingerprint);
+            return hints.event_fingerprints.contains(&fingerprint);
         }
     }
 
@@ -706,5 +752,34 @@ mod tests {
             .filter_map(|node| node.ref_id)
             .collect::<Vec<_>>();
         assert_eq!(refs, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn event_fingerprints_mark_matching_class_node_as_interactive() {
+        let source_wxml = r#"<view class="cake-item" bindtap="showSheet">蛋糕</view>"#;
+        let outer_wxml = r#"<page><view class="cake-item">蛋糕预订</view></page>"#;
+        let hints = InteractiveHints {
+            event_fingerprints: extract_event_fingerprints(source_wxml),
+            sid_hints: HashSet::new(),
+        };
+
+        let tree = parse_wxml(outer_wxml, 20, Some(&hints));
+        let rendered = render_tree(&tree, false, 20, None, 30);
+
+        assert_eq!(rendered.total_count, 1);
+    }
+
+    #[test]
+    fn sid_hints_mark_framework_data_sid_node_as_interactive() {
+        let outer_wxml = r#"<page><view class="stepper-add" data-sid="s42">+</view></page>"#;
+        let hints = InteractiveHints {
+            event_fingerprints: HashSet::new(),
+            sid_hints: HashSet::from([String::from("s42")]),
+        };
+
+        let tree = parse_wxml(outer_wxml, 20, Some(&hints));
+        let rendered = render_tree(&tree, false, 20, None, 30);
+
+        assert_eq!(rendered.total_count, 1);
     }
 }
