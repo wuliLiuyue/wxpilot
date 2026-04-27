@@ -145,5 +145,8 @@ vite.config.ts.timestamp-*
 # OMX
 .omx/
 
+#OMC
+.omc/
+
 # Codex
 .codex/
