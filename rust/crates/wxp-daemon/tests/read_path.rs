@@ -747,3 +747,516 @@ async fn view_find_wait_read_and_assert_work_on_snapshot_refs() {
     assert_eq!(assert_result["result"]["ok"], true);
     assert_eq!(assert_result["result"]["actual"], "确定");
 }
+
+#[tokio::test]
+async fn view_uses_source_wxml_event_fingerprints_to_restore_interactive_nodes() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+
+    tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.expect("accept");
+        let mut ws = accept_async(stream).await.expect("ws accept");
+        while let Some(message) = ws.next().await {
+            let payload = message.expect("message").into_text().expect("text");
+            let request: Value = serde_json::from_str(&payload).expect("request json");
+            let id = request.get("id").cloned().unwrap_or(Value::Null);
+            let method = request
+                .get("method")
+                .and_then(Value::as_str)
+                .expect("request method");
+
+            let response = match method {
+                "App.getCurrentPage" => {
+                    json!({ "id": id, "result": { "pageId": 1, "path": "pages/index/index", "query": {} } })
+                }
+                "Page.getData" => {
+                    json!({
+                        "id": id,
+                        "result": {
+                            "data": {
+                                "root": { "cn": [] }
+                            }
+                        }
+                    })
+                }
+                "Page.getElement" => {
+                    json!({
+                        "id": id,
+                        "result": {
+                            "elementId": "root-1",
+                            "nodeId": "node-root-1",
+                            "tagName": "body"
+                        }
+                    })
+                }
+                "Element.getWXML" => {
+                    json!({
+                        "id": id,
+                        "result": {
+                            "wxml": r#"<page><view class="cake-item">蛋糕预订</view></page>"#
+                        }
+                    })
+                }
+                _ => json!({ "id": id, "result": {} }),
+            };
+
+            ws.send(Message::Text(response.to_string().into()))
+                .await
+                .expect("send");
+        }
+    });
+
+    let project_dir = unique_test_dir("source-fingerprint-project");
+    fs::create_dir_all(project_dir.join("pages/index")).expect("create project tree");
+    fs::write(
+        project_dir.join("pages/index/index.wxml"),
+        r#"<view class="cake-item" bindtap="showSheet">蛋糕</view>"#,
+    )
+    .expect("write source wxml");
+
+    let paths = test_paths("source-fingerprint");
+    let mut state = ServerState::new(paths).expect("server state");
+    state.runtime.saved.project_path = Some(project_dir.display().to_string());
+    state
+        .runtime
+        .set_ws_endpoint_for_test(format!("ws://{addr}"));
+
+    dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "connect",
+            "params": {},
+        }),
+    )
+    .await
+    .expect("connect");
+
+    let view = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "view",
+            "params": {},
+        }),
+    )
+    .await
+    .expect("view");
+
+    assert_eq!(view["result"]["ok"], true);
+    assert_eq!(view["result"]["shownCount"], 1);
+    assert_eq!(view["result"]["totalCount"], 1);
+    assert!(view["result"]["output"]
+        .as_str()
+        .expect("view output")
+        .contains("%1"));
+}
+
+#[tokio::test]
+async fn view_uses_taro_sid_template_hints_to_restore_framework_interactive_nodes() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+
+    tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.expect("accept");
+        let mut ws = accept_async(stream).await.expect("ws accept");
+        while let Some(message) = ws.next().await {
+            let payload = message.expect("message").into_text().expect("text");
+            let request: Value = serde_json::from_str(&payload).expect("request json");
+            let id = request.get("id").cloned().unwrap_or(Value::Null);
+            let method = request
+                .get("method")
+                .and_then(Value::as_str)
+                .expect("request method");
+
+            let response = match method {
+                "App.getCurrentPage" => {
+                    json!({ "id": id, "result": { "pageId": 1, "path": "pages/cart/cart", "query": {} } })
+                }
+                "Page.getData" => {
+                    json!({
+                        "id": id,
+                        "result": {
+                            "data": {
+                                "root": {
+                                    "cn": [
+                                        { "sid": "sid-display", "nn": "5", "cn": [] },
+                                        { "sid": "sid-add", "nn": "7", "cn": [] }
+                                    ]
+                                }
+                            }
+                        }
+                    })
+                }
+                "Page.getElement" => {
+                    json!({
+                        "id": id,
+                        "result": {
+                            "elementId": "root-1",
+                            "nodeId": "node-root-1",
+                            "tagName": "body"
+                        }
+                    })
+                }
+                "Element.getWXML" => {
+                    json!({
+                        "id": id,
+                        "result": {
+                            "wxml": r#"<page><view class="display" data-sid="sid-display">1</view><view class="stepper-add" data-sid="sid-add">+</view></page>"#
+                        }
+                    })
+                }
+                _ => json!({ "id": id, "result": {} }),
+            };
+
+            ws.send(Message::Text(response.to_string().into()))
+                .await
+                .expect("send");
+        }
+    });
+
+    let project_dir = unique_test_dir("taro-template-project");
+    fs::create_dir_all(project_dir.join("pages/cart")).expect("create project tree");
+    fs::write(
+        project_dir.join("pages/cart/cart.wxml"),
+        r#"<import src="../../base.wxml"/><template is="taro_tmpl" data="{{root:root}}" />"#,
+    )
+    .expect("write page wxml");
+    fs::write(
+        project_dir.join("base.wxml"),
+        r#"
+<template name="tmpl_0_5">
+  <view class="{{i.cl}}" id="{{i.uid||i.sid}}" data-sid="{{i.sid}}">
+    <block wx:for="{{i.cn}}" wx:key="sid"></block>
+  </view>
+</template>
+<template name="tmpl_0_7">
+  <view class="{{i.cl}}" catchtap="eh" id="{{i.uid||i.sid}}" data-sid="{{i.sid}}">
+    <block wx:for="{{i.cn}}" wx:key="sid"></block>
+  </view>
+</template>
+"#,
+    )
+    .expect("write base wxml");
+
+    let paths = test_paths("taro-template");
+    let mut state = ServerState::new(paths).expect("server state");
+    state.runtime.saved.project_path = Some(project_dir.display().to_string());
+    state
+        .runtime
+        .set_ws_endpoint_for_test(format!("ws://{addr}"));
+
+    dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "connect",
+            "params": {},
+        }),
+    )
+    .await
+    .expect("connect");
+
+    let view = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "view",
+            "params": {},
+        }),
+    )
+    .await
+    .expect("view");
+
+    assert_eq!(view["result"]["ok"], true);
+    assert_eq!(view["result"]["shownCount"], 1);
+    assert_eq!(view["result"]["totalCount"], 1);
+    assert!(view["result"]["output"]
+        .as_str()
+        .expect("view output")
+        .contains("stepper-add"));
+    assert!(!view["result"]["output"]
+        .as_str()
+        .expect("view output")
+        .contains("display"));
+}
+
+#[tokio::test]
+async fn view_uses_taro_runtime_fingerprints_when_inner_icon_node_has_no_data_sid() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+
+    tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.expect("accept");
+        let mut ws = accept_async(stream).await.expect("ws accept");
+        while let Some(message) = ws.next().await {
+            let payload = message.expect("message").into_text().expect("text");
+            let request: Value = serde_json::from_str(&payload).expect("request json");
+            let id = request.get("id").cloned().unwrap_or(Value::Null);
+            let method = request
+                .get("method")
+                .and_then(Value::as_str)
+                .expect("request method");
+
+            let response = match method {
+                "App.getCurrentPage" => {
+                    json!({ "id": id, "result": { "pageId": 1, "path": "pages/cart/cart", "query": {} } })
+                }
+                "Page.getData" => {
+                    json!({
+                        "id": id,
+                        "result": {
+                            "data": {
+                                "root": {
+                                    "cn": [
+                                        {
+                                            "sid": "container",
+                                            "nn": "5",
+                                            "cl": "nut-inputnumber",
+                                            "cn": [
+                                                {
+                                                    "sid": "minus-icon",
+                                                    "nn": "6",
+                                                    "cl": "h5-i nutui-iconfont nut-icon nut-icon-minus nut-inputnumber__icon"
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    })
+                }
+                "Page.getElement" => {
+                    json!({
+                        "id": id,
+                        "result": {
+                            "elementId": "root-1",
+                            "nodeId": "node-root-1",
+                            "tagName": "body"
+                        }
+                    })
+                }
+                "Element.getWXML" => {
+                    json!({
+                        "id": id,
+                        "result": {
+                            "wxml": r#"<page><view class="nut-inputnumber"><text class="h5-i nutui-iconfont nut-icon nut-icon-minus nut-inputnumber__icon"></text></view></page>"#
+                        }
+                    })
+                }
+                _ => json!({ "id": id, "result": {} }),
+            };
+
+            ws.send(Message::Text(response.to_string().into()))
+                .await
+                .expect("send");
+        }
+    });
+
+    let project_dir = unique_test_dir("taro-runtime-fingerprint-project");
+    fs::create_dir_all(project_dir.join("pages/cart")).expect("create project tree");
+    fs::write(
+        project_dir.join("pages/cart/cart.wxml"),
+        r#"<import src="../../base.wxml"/><template is="taro_tmpl" data="{{root:root}}" />"#,
+    )
+    .expect("write page wxml");
+    fs::write(
+        project_dir.join("base.wxml"),
+        r#"
+<template name="tmpl_0_5">
+  <view class="{{i.cl}}" id="{{i.uid||i.sid}}">
+    <block wx:for="{{i.cn}}" wx:key="sid"></block>
+  </view>
+</template>
+<template name="tmpl_0_6">
+  <block wx:if="{{true}}">
+    <text class="{{i.cl}}" bind:tap="eh" id="{{i.uid||i.sid}}">
+      <block wx:for="{{i.cn}}" wx:key="sid"></block>
+    </text>
+  </block>
+</template>
+"#,
+    )
+    .expect("write base wxml");
+
+    let paths = test_paths("taro-runtime-fingerprint");
+    let mut state = ServerState::new(paths).expect("server state");
+    state.runtime.saved.project_path = Some(project_dir.display().to_string());
+    state
+        .runtime
+        .set_ws_endpoint_for_test(format!("ws://{addr}"));
+
+    dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "connect",
+            "params": {},
+        }),
+    )
+    .await
+    .expect("connect");
+
+    let find = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "find",
+            "params": {
+                "query": "nut-icon-minus",
+                "all": true,
+                "limit": 20
+            },
+        }),
+    )
+    .await
+    .expect("find");
+
+    assert_eq!(find["result"]["ok"], true);
+    assert_eq!(find["result"]["matches"][0]["interactive"], true);
+    assert!(find["result"]["matches"][0]["ref"].is_number());
+}
+
+#[tokio::test]
+async fn view_resolves_base_wxml_from_subpackage_directory() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+
+    tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.expect("accept");
+        let mut ws = accept_async(stream).await.expect("ws accept");
+        while let Some(message) = ws.next().await {
+            let payload = message.expect("message").into_text().expect("text");
+            let request: Value = serde_json::from_str(&payload).expect("request json");
+            let id = request.get("id").cloned().unwrap_or(Value::Null);
+            let method = request
+                .get("method")
+                .and_then(Value::as_str)
+                .expect("request method");
+
+            let response = match method {
+                "App.getCurrentPage" => {
+                    json!({ "id": id, "result": { "pageId": 1, "path": "mini/pages/cart/cart", "query": {} } })
+                }
+                "Page.getData" => {
+                    json!({
+                        "id": id,
+                        "result": {
+                            "data": {
+                                "root": {
+                                    "cn": [
+                                        {
+                                            "sid": "container",
+                                            "nn": "5",
+                                            "cl": "nut-inputnumber",
+                                            "cn": [
+                                                {
+                                                    "sid": "minus-icon",
+                                                    "nn": "6",
+                                                    "cl": "h5-i nutui-iconfont nut-icon nut-icon-minus nut-inputnumber__icon"
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    })
+                }
+                "Page.getElement" => {
+                    json!({
+                        "id": id,
+                        "result": {
+                            "elementId": "root-1",
+                            "nodeId": "node-root-1",
+                            "tagName": "body"
+                        }
+                    })
+                }
+                "Element.getWXML" => {
+                    json!({
+                        "id": id,
+                        "result": {
+                            "wxml": r#"<page><view class="nut-inputnumber"><text class="h5-i nutui-iconfont nut-icon nut-icon-minus nut-inputnumber__icon"></text></view></page>"#
+                        }
+                    })
+                }
+                _ => json!({ "id": id, "result": {} }),
+            };
+
+            ws.send(Message::Text(response.to_string().into()))
+                .await
+                .expect("send");
+        }
+    });
+
+    let project_dir = unique_test_dir("subpackage-base-project");
+    fs::create_dir_all(project_dir.join("mini/pages/cart")).expect("create project tree");
+    fs::write(
+        project_dir.join("mini/pages/cart/cart.wxml"),
+        r#"<import src="../../base.wxml"/><template is="taro_tmpl" data="{{root:root}}" />"#,
+    )
+    .expect("write page wxml");
+    fs::write(
+        project_dir.join("mini/base.wxml"),
+        r#"
+<template name="tmpl_0_5">
+  <view class="{{i.cl}}" id="{{i.uid||i.sid}}">
+    <block wx:for="{{i.cn}}" wx:key="sid"></block>
+  </view>
+</template>
+<template name="tmpl_0_6">
+  <text class="{{i.cl}}" bindtap="eh" id="{{i.uid||i.sid}}">
+    <block wx:for="{{i.cn}}" wx:key="sid"></block>
+  </text>
+</template>
+"#,
+    )
+    .expect("write subpackage base wxml");
+
+    let paths = test_paths("subpackage-base");
+    let mut state = ServerState::new(paths).expect("server state");
+    state.runtime.saved.project_path = Some(project_dir.display().to_string());
+    state
+        .runtime
+        .set_ws_endpoint_for_test(format!("ws://{addr}"));
+
+    dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "connect",
+            "params": {},
+        }),
+    )
+    .await
+    .expect("connect");
+
+    let find = dispatch_request(
+        &mut state,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "find",
+            "params": {
+                "query": "nut-icon-minus",
+                "all": true,
+                "limit": 20
+            },
+        }),
+    )
+    .await
+    .expect("find");
+
+    assert_eq!(find["result"]["ok"], true);
+    assert_eq!(find["result"]["matches"][0]["interactive"], true);
+    assert!(find["result"]["matches"][0]["ref"].is_number());
+}
