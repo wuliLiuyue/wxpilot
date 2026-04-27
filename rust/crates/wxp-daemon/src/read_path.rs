@@ -1,11 +1,16 @@
 use std::{
-    io,
+    collections::{HashMap, HashSet},
+    fs, io,
+    path::Path,
     time::{Duration, Instant},
 };
 
 use serde_json::{json, Value};
 use tokio::time::sleep;
-use wxp_snapshot::{find_nodes, parse_wxml, render_find_matches, render_tree, FindMatch};
+use wxp_snapshot::{
+    extract_event_fingerprints, find_nodes, parse_wxml, render_find_matches, render_tree,
+    FindMatch, InteractiveHints,
+};
 
 use crate::{
     handlers::{element_request_params, format_find_output},
@@ -329,6 +334,15 @@ async fn build_snapshot(
         .and_then(Value::as_str)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "page_path_missing"))?
         .to_string();
+    let page_data = state
+        .call_automator(
+            request_id,
+            "page_data",
+            "Page.getData",
+            json!({ "pageId": page_id.clone() }),
+        )
+        .await
+        .ok();
     let root_element = state
         .call_automator(
             request_id,
@@ -355,11 +369,296 @@ async fn build_snapshot(
         .and_then(Value::as_str)
         .or_else(|| wxml.get("outerWxml").and_then(Value::as_str))
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "outer_wxml_missing"))?;
+    let interactive_hints = build_interactive_hints(
+        state.runtime.saved.project_path.as_deref(),
+        &page_path,
+        page_data.as_ref().and_then(|value| value.get("data")),
+    );
 
     Ok(SnapshotPayload {
         page_path,
-        tree: parse_wxml(outer_wxml, depth, None),
+        tree: parse_wxml(outer_wxml, depth, Some(&interactive_hints)),
     })
+}
+
+fn build_interactive_hints(
+    project_path: Option<&str>,
+    page_path: &str,
+    page_data: Option<&Value>,
+) -> InteractiveHints {
+    let Some(project_path) = project_path else {
+        return InteractiveHints::default();
+    };
+
+    let project_root = Path::new(project_path);
+    let mut hints = InteractiveHints::default();
+
+    let source_path = project_root.join(format!("{page_path}.wxml"));
+    if let Ok(source_wxml) = fs::read_to_string(&source_path) {
+        hints.event_fingerprints = extract_event_fingerprints(&source_wxml);
+    }
+
+    let base_path = resolve_taro_base_wxml_path(project_root, &source_path);
+    if let (Some(base_path), Some(page_data)) = (base_path, page_data) {
+        if let Ok(base_wxml) = fs::read_to_string(&base_path) {
+            let templates = extract_taro_interactive_templates(&base_wxml);
+            if !templates.is_empty() {
+                let template_ids = templates.keys().cloned().collect::<HashSet<_>>();
+                collect_taro_interactive_sids(page_data, &template_ids, &mut hints.sid_hints);
+                collect_taro_runtime_fingerprints(
+                    page_data,
+                    &templates,
+                    &mut hints.event_fingerprints,
+                );
+            }
+        }
+    }
+
+    hints
+}
+
+fn resolve_taro_base_wxml_path(
+    project_root: &Path,
+    source_path: &Path,
+) -> Option<std::path::PathBuf> {
+    let mut current = source_path.parent()?;
+    loop {
+        let candidate = current.join("base.wxml");
+        if candidate.exists() {
+            return Some(candidate);
+        }
+        if current == project_root {
+            return None;
+        }
+        current = current.parent()?;
+    }
+}
+
+fn extract_taro_interactive_templates(base_wxml: &str) -> HashMap<String, String> {
+    let mut templates = HashMap::new();
+    let mut current_id = None::<String>;
+    let mut current_tag = None::<String>;
+    let mut is_interactive = false;
+
+    for line in base_wxml.lines() {
+        if let Some(next_id) = parse_taro_template_id(line) {
+            current_id = Some(next_id);
+            current_tag = None;
+            is_interactive = line_has_interactive_signal(line);
+            continue;
+        }
+
+        if current_tag.is_none() {
+            current_tag = parse_taro_template_tag(line);
+        }
+
+        if current_id.is_some() && line_has_interactive_signal(line) {
+            is_interactive = true;
+        }
+
+        if line.contains("</template>") {
+            if is_interactive {
+                if let (Some(template_id), Some(tag)) =
+                    (current_id.as_deref(), current_tag.as_deref())
+                {
+                    templates.insert(template_id.to_string(), tag.to_string());
+                    if let Some((base_id, _)) = template_id.rsplit_once('_') {
+                        if matches!(template_id.split('_').next_back(), Some("focus" | "blur")) {
+                            templates.insert(base_id.to_string(), tag.to_string());
+                        }
+                    }
+                }
+            }
+            current_id = None;
+            current_tag = None;
+            is_interactive = false;
+        }
+    }
+
+    templates
+}
+
+fn parse_taro_template_id(line: &str) -> Option<String> {
+    let start = line.find(r#"name="tmpl_"#)?;
+    let remainder = &line[start + r#"name="tmpl_"#.len()..];
+    let end = remainder.find('"')?;
+    let template_name = &remainder[..end];
+    let (_, template_id) = template_name.split_once('_')?;
+    Some(template_id.to_string())
+}
+
+fn parse_taro_template_tag(line: &str) -> Option<String> {
+    let start = line.find('<')?;
+    let remainder = &line[start + 1..];
+    if remainder.starts_with('/') || remainder.starts_with("template") {
+        return None;
+    }
+
+    let tag = remainder
+        .chars()
+        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '-')
+        .collect::<String>();
+    let tag = tag.to_ascii_lowercase();
+    if tag.is_empty() || matches!(tag.as_str(), "block") {
+        None
+    } else {
+        Some(tag)
+    }
+}
+
+fn line_has_interactive_signal(line: &str) -> bool {
+    const INTERACTIVE_ATTRS: &[&str] = &[
+        "bindtap",
+        "catchtap",
+        "bind:tap",
+        "catch:tap",
+        "bindchange",
+        "bind:change",
+        "bindinput",
+        "bind:input",
+        "bindsubmit",
+        "bind:submit",
+        "bindlongpress",
+        "bind:longpress",
+        "bindconfirm",
+        "bind:confirm",
+        "bindfocus",
+        "bind:focus",
+        "bindblur",
+        "bind:blur",
+        "bindscroll",
+        "bind:scroll",
+        "bindscrolltoupper",
+        "bind:scrolltoupper",
+        "bindscrolltolower",
+        "bind:scrolltolower",
+        "hover-start-time",
+        "hover-stay-time",
+    ];
+    const INTERACTIVE_TAGS: &[&str] = &[
+        "button",
+        "input",
+        "textarea",
+        "picker",
+        "picker-view",
+        "switch",
+        "slider",
+        "checkbox",
+        "radio",
+        "scroll-view",
+    ];
+
+    let line = line.trim_start().to_ascii_lowercase();
+    INTERACTIVE_ATTRS
+        .iter()
+        .any(|attr| line_has_attr_assignment(&line, attr))
+        || INTERACTIVE_TAGS
+            .iter()
+            .any(|tag| line_starts_with_tag(&line, tag))
+}
+
+fn line_has_attr_assignment(line: &str, attr: &str) -> bool {
+    let mut start = 0;
+    while let Some(offset) = line[start..].find(attr) {
+        let position = start + offset;
+        let before = position
+            .checked_sub(1)
+            .and_then(|index| line.as_bytes().get(index));
+        let after = line.as_bytes().get(position + attr.len());
+        if matches!(before, Some(b' ' | b'\t' | b'\r' | b'\n')) && matches!(after, Some(b'=')) {
+            return true;
+        }
+        start = position + attr.len();
+    }
+
+    false
+}
+
+fn line_starts_with_tag(line: &str, tag: &str) -> bool {
+    let Some(remainder) = line.strip_prefix('<') else {
+        return false;
+    };
+    let Some(after_tag) = remainder.strip_prefix(tag) else {
+        return false;
+    };
+
+    matches!(after_tag.as_bytes().first(), Some(b' ' | b'>' | b'/'))
+}
+
+fn collect_taro_interactive_sids(
+    value: &Value,
+    template_ids: &HashSet<String>,
+    sid_hints: &mut HashSet<String>,
+) {
+    match value {
+        Value::Object(map) => {
+            if let (Some(sid), Some(template_id)) = (
+                map.get("sid").and_then(value_as_str),
+                map.get("nn").and_then(value_as_str),
+            ) {
+                if template_ids.contains(template_id) {
+                    sid_hints.insert(sid.to_string());
+                }
+            }
+
+            for child in map.values() {
+                collect_taro_interactive_sids(child, template_ids, sid_hints);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                collect_taro_interactive_sids(item, template_ids, sid_hints);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_taro_runtime_fingerprints(
+    value: &Value,
+    templates: &HashMap<String, String>,
+    event_fingerprints: &mut HashSet<String>,
+) {
+    match value {
+        Value::Object(map) => {
+            if let (Some(template_id), Some(class_attr)) = (
+                map.get("nn").and_then(value_as_str),
+                map.get("cl").and_then(value_as_str),
+            ) {
+                if let Some(tag) = templates.get(template_id) {
+                    let normalized = class_attr
+                        .split_whitespace()
+                        .filter(|value| !value.is_empty())
+                        .collect::<Vec<_>>();
+                    if !normalized.is_empty() {
+                        let mut classes = normalized
+                            .into_iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>();
+                        classes.sort();
+                        event_fingerprints.insert(format!("{tag}:{}", classes.join(",")));
+                    }
+                }
+            }
+
+            for child in map.values() {
+                collect_taro_runtime_fingerprints(child, templates, event_fingerprints);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                collect_taro_runtime_fingerprints(item, templates, event_fingerprints);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn value_as_str(value: &Value) -> Option<&str> {
+    match value {
+        Value::String(text) => Some(text.as_str()),
+        _ => None,
+    }
 }
 
 fn serialize_matches(matches: &[FindMatch]) -> Vec<Value> {
@@ -433,4 +732,61 @@ fn error_response(id: Value, code: i64, message: &str, data: Option<Value>) -> V
             "data": data,
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn taro_template_scan_matches_interactive_attrs_and_tags() {
+        let templates = extract_taro_interactive_templates(
+            r#"
+<template name="tmpl_0_1">
+  <view class="{{i.cl}}" catchtap="eh"></view>
+</template>
+<template name="tmpl_0_2">
+  <view class="{{i.cl}}" bind:tap="eh"></view>
+</template>
+<template name="tmpl_0_3">
+  <input class="{{i.cl}}" bind:input="eh" />
+</template>
+<template name="tmpl_0_4">
+  <picker class="{{i.cl}}"></picker>
+</template>
+<template name="tmpl_0_5">
+  <view class="{{i.cl}}" bind:submit="eh"></view>
+</template>
+<template name="tmpl_0_6">
+  <view class="{{i.cl}}" bind:longpress="eh"></view>
+</template>
+<template name="tmpl_0_7">
+  <view class="{{i.cl}}" bind:change="eh"></view>
+</template>
+"#,
+        );
+
+        assert_eq!(templates.get("1").map(String::as_str), Some("view"));
+        assert_eq!(templates.get("2").map(String::as_str), Some("view"));
+        assert_eq!(templates.get("3").map(String::as_str), Some("input"));
+        assert_eq!(templates.get("4").map(String::as_str), Some("picker"));
+        assert_eq!(templates.get("5").map(String::as_str), Some("view"));
+        assert_eq!(templates.get("6").map(String::as_str), Some("view"));
+        assert_eq!(templates.get("7").map(String::as_str), Some("view"));
+    }
+
+    #[test]
+    fn taro_template_scan_skips_block_wrappers_for_runtime_fingerprints() {
+        let templates = extract_taro_interactive_templates(
+            r#"
+<template name="tmpl_0_9">
+  <block wx:if="{{visible}}">
+    <text class="{{i.cl}}" bind:tap="eh"></text>
+  </block>
+</template>
+"#,
+        );
+
+        assert_eq!(templates.get("9").map(String::as_str), Some("text"));
+    }
 }
