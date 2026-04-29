@@ -1,8 +1,9 @@
 use std::{
-    io,
+    fs, io,
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use base64::{engine::general_purpose, Engine as _};
 use serde_json::{json, Value};
 use wxp_automator_client::normalize_input_call;
 
@@ -202,23 +203,27 @@ async fn shot(state: &mut ServerState, id: Value, params: &Value) -> io::Result<
         .and_then(Value::as_str)
         .map(str::to_string)
         .unwrap_or_else(default_screenshot_path);
-    let mut request = serde_json::Map::new();
-    request.insert("base64".into(), Value::Bool(base64));
-    request.insert("path".into(), Value::String(save_path.clone()));
 
     let result = state
-        .call_automator(&id, "shot", "App.captureScreenshot", Value::Object(request))
+        .call_automator(&id, "shot", "App.captureScreenshot", json!({}))
         .await?;
 
-    let path = result
-        .get("path")
-        .cloned()
-        .unwrap_or(Value::String(save_path));
+    let screenshot_data = result.get("data").and_then(Value::as_str).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "capture_screenshot_missing_data",
+        )
+    })?;
+    let image = general_purpose::STANDARD
+        .decode(screenshot_data)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    fs::write(&save_path, image)?;
+
     let mut response = serde_json::Map::new();
     response.insert("ok".into(), Value::Bool(true));
-    response.insert("path".into(), path);
-    if let Some(base64) = result.get("base64").cloned() {
-        response.insert("base64".into(), base64);
+    response.insert("path".into(), Value::String(save_path));
+    if base64 {
+        response.insert("base64".into(), Value::String(screenshot_data.to_string()));
     }
 
     Ok(ok_result(id, Value::Object(response)))
