@@ -269,7 +269,7 @@ async fn screenshot_run_and_wx_actions_forward_to_automator() {
                     json!({ "id": id, "result": { "pageId": 1, "path": "pages/index/index", "query": {} } })
                 }
                 "App.captureScreenshot" => {
-                    json!({ "id": id, "result": { "path": "/tmp/wxp-shot.png", "base64": "ZmFrZQ==" } })
+                    json!({ "id": id, "result": { "data": "ZmFrZQ==" } })
                 }
                 "App.callFunction" => {
                     json!({ "id": id, "result": { "value": 2 } })
@@ -286,7 +286,9 @@ async fn screenshot_run_and_wx_actions_forward_to_automator() {
         }
     });
 
-    let mut state = ServerState::new(test_paths("extended-actions")).expect("server state");
+    let paths = test_paths("extended-actions");
+    let shot_path = paths.root_dir.join("shot.png");
+    let mut state = ServerState::new(paths).expect("server state");
     state
         .runtime
         .set_ws_endpoint_for_test(format!("ws://{addr}"));
@@ -309,14 +311,15 @@ async fn screenshot_run_and_wx_actions_forward_to_automator() {
             "jsonrpc": "2.0",
             "id": 2,
             "method": "shot",
-            "params": { "base64": true },
+            "params": { "path": shot_path, "base64": true },
         }),
     )
     .await
     .expect("shot");
     assert_eq!(shot["result"]["ok"], true);
-    assert_eq!(shot["result"]["path"], "/tmp/wxp-shot.png");
+    assert_eq!(shot["result"]["path"], shot_path.display().to_string());
     assert_eq!(shot["result"]["base64"], "ZmFrZQ==");
+    assert_eq!(fs::read(&shot_path).expect("read shot"), b"fake");
 
     let run = dispatch_request(
         &mut state,
@@ -366,6 +369,12 @@ async fn screenshot_run_and_wx_actions_forward_to_automator() {
             .any(|payload| payload.contains("\"method\":\"App.captureScreenshot\"")),
         "shot should call App.captureScreenshot"
     );
+    let screenshot_payload = payloads
+        .iter()
+        .filter_map(|payload| serde_json::from_str::<Value>(payload).ok())
+        .find(|payload| payload["method"] == "App.captureScreenshot")
+        .expect("capture screenshot payload");
+    assert_eq!(screenshot_payload["params"], json!({}));
     assert!(
         payloads
             .iter()
@@ -424,7 +433,7 @@ async fn shot_without_explicit_path_still_returns_generated_path() {
                     json!({ "id": id, "result": { "pageId": 1, "path": "pages/index/index", "query": {} } })
                 }
                 "App.captureScreenshot" => {
-                    json!({ "id": id, "result": { "base64": "ZmFrZQ==" } })
+                    json!({ "id": id, "result": { "data": "ZmFrZQ==" } })
                 }
                 _ => json!({ "id": id, "result": {} }),
             };
@@ -468,6 +477,7 @@ async fn shot_without_explicit_path_still_returns_generated_path() {
         .expect("generated path")
         .to_string();
     assert!(generated_path.ends_with(".png"));
+    assert_eq!(fs::read(&generated_path).expect("read shot"), b"fake");
 
     let payloads = seen_payloads.lock().expect("lock payloads");
     let screenshot_payload = payloads
@@ -475,8 +485,5 @@ async fn shot_without_explicit_path_still_returns_generated_path() {
         .filter_map(|payload| serde_json::from_str::<Value>(payload).ok())
         .find(|payload| payload["method"] == "App.captureScreenshot")
         .expect("capture screenshot payload");
-    assert_eq!(
-        screenshot_payload["params"]["path"].as_str(),
-        Some(generated_path.as_str())
-    );
+    assert_eq!(screenshot_payload["params"], json!({}));
 }
