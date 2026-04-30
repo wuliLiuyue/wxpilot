@@ -1,5 +1,5 @@
 use std::{
-    io,
+    fs, io,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -202,26 +202,64 @@ async fn shot(state: &mut ServerState, id: Value, params: &Value) -> io::Result<
         .and_then(Value::as_str)
         .map(str::to_string)
         .unwrap_or_else(default_screenshot_path);
-    let mut request = serde_json::Map::new();
-    request.insert("base64".into(), Value::Bool(base64));
-    request.insert("path".into(), Value::String(save_path.clone()));
 
     let result = state
-        .call_automator(&id, "shot", "App.captureScreenshot", Value::Object(request))
+        .call_automator(&id, "shot", "App.captureScreenshot", json!({}))
         .await?;
 
-    let path = result
-        .get("path")
-        .cloned()
-        .unwrap_or(Value::String(save_path));
+    let screenshot_base64 = result
+        .get("data")
+        .or_else(|| result.get("base64"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "screenshot_data_missing"))?;
+    let bytes = decode_base64(screenshot_base64)?;
+    fs::write(&save_path, bytes)?;
+
     let mut response = serde_json::Map::new();
     response.insert("ok".into(), Value::Bool(true));
-    response.insert("path".into(), path);
-    if let Some(base64) = result.get("base64").cloned() {
-        response.insert("base64".into(), base64);
+    response.insert("path".into(), Value::String(save_path));
+    if base64 {
+        response.insert(
+            "base64".into(),
+            Value::String(screenshot_base64.to_string()),
+        );
     }
 
     Ok(ok_result(id, Value::Object(response)))
+}
+
+fn decode_base64(input: &str) -> io::Result<Vec<u8>> {
+    let mut output = Vec::with_capacity(input.len() * 3 / 4);
+    let mut buffer = 0u32;
+    let mut bits = 0u8;
+
+    for byte in input.bytes().filter(|byte| !byte.is_ascii_whitespace()) {
+        if byte == b'=' {
+            break;
+        }
+        let value = match byte {
+            b'A'..=b'Z' => byte - b'A',
+            b'a'..=b'z' => byte - b'a' + 26,
+            b'0'..=b'9' => byte - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "invalid_screenshot_base64",
+                ))
+            }
+        };
+
+        buffer = (buffer << 6) | u32::from(value);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            output.push(((buffer >> bits) & 0xff) as u8);
+        }
+    }
+
+    Ok(output)
 }
 
 fn default_screenshot_path() -> String {
