@@ -19,12 +19,21 @@
 
 ```bash
 cp .env.example .env
+make license-gen-materials KEY_ID=staging-20260511
 ```
+
+然后将 `.wxpilot-license/server.env` 中的值写入 `.env`。
 
 ## Required Environment Variables
 
 - `WXP_LICENSE_PRIVATE_KEY_HEX`
 - `WXP_LICENSE_KEY_ID`
+
+推荐先做一致性校验：
+
+```bash
+make license-verify-materials
+```
 
 ## Start Service
 
@@ -58,7 +67,8 @@ curl -fsS http://127.0.0.1:8787/healthz
 ## Seed Test License
 
 ```bash
-make license-seed DB=./data/license.db KEY=lic-e2e-001
+make license-gen-key PREFIX=test COUNT=1 OUT_FILE=.wxpilot-license/license-keys.txt
+make license-seed DB=./data/license.db KEY=$(head -n 1 .wxpilot-license/license-keys.txt)
 ```
 
 也可直接运行脚本：
@@ -89,8 +99,16 @@ scripts/license/backup-sqlite-license.sh ./data/license.db ./.env ./backups
 ## Upgrade
 
 ```bash
+make license-gen-materials KEY_ID=prod-20260511
+make license-verify-materials
 docker compose up -d --build
 docker compose ps
 ```
 
 升级前先执行一次备份。
+
+## Rotation Notes
+
+- 客户端当前只信任一个内嵌公钥
+- 服务端私钥轮换后，必须同步更新客户端构建使用的 `.wxpilot-license/client.env`
+- 完成轮换后重新执行 `make local-build`

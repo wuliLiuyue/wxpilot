@@ -23,9 +23,20 @@ cargo build -p wxp-daemon --bin wxp-daemon
 面向仓库开发者的本地闭环，不是正式发布安装方案。
 
 ```bash
-# 发布版本地打包前，必须先注入激活服务地址与授权公钥
-export WXP_LICENSE_SERVER_URL="https://license.example.com"
-export WXP_LICENSE_EMBEDDED_PUBLIC_KEY_HEX="<public-key-hex>"
+# 先生成授权材料（默认输出到 .wxpilot-license/）
+make license-gen-materials KEY_ID=dev-20260511
+
+# 本地回归测试可显式指定本地 license server
+make license-gen-materials KEY_ID=dev-20260511 SERVER_URL=http://127.0.0.1:8787
+
+# 查看生成结果
+cat .wxpilot-license/client.env
+cat .wxpilot-license/server.env
+
+# 将客户端构建变量注入当前 shell
+set -a
+source .wxpilot-license/client.env
+set +a
 
 # 先构建 macOS arm64 / x86_64 本地二进制
 make local-build
@@ -56,7 +67,13 @@ make local-install-test
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-如果缺少上述两个环境变量，`make local-build` 会直接失败，避免产出无法激活的发布包。
+如果缺少上述两个环境变量，`make local-build` 会直接失败，避免产出无法激活的发布包。生成材料后可执行：
+
+```bash
+make license-verify-materials
+```
+
+校验服务端私钥、客户端公钥和 `key id` 是否一致。
 
 ## 前置步骤
 
@@ -194,17 +211,24 @@ wxpilot daemon restart
 - 发布版**不是安装即用**；未激活时仅允许 `wxpilot activate <key>`、`wxpilot --help`、`wxpilot --version`
 - 用户购买后，通过 `wxpilot activate <key>` 完成一次联网激活
 - 发布版 CLI 在构建时必须内嵌激活服务地址 `WXP_LICENSE_SERVER_URL` 与授权公钥 `WXP_LICENSE_EMBEDDED_PUBLIC_KEY_HEX`
+- 授权材料建议统一通过 `make license-gen-materials KEY_ID=<env-date>` 生成，默认输出到 `.wxpilot-license/`
+- 本地回归测试可通过 `SERVER_URL=http://127.0.0.1:8787` 生成本地激活地址；正式环境再切到正式域名
+- 测试或发放用的 license key 建议通过 `make license-gen-key PREFIX=test COUNT=5 OUT_FILE=.wxpilot-license/license-keys.txt` 生成
+- 可用 `make license-verify-materials` 校验私钥、公钥和 `key id` 是否匹配；如需连同 key 文件一起校验，可传 `KEY_FILE=.wxpilot-license/license-keys.txt`
 - 本仓当前 `make local-build` / `make local-install` / `scripts/local/install-macos-binaries.sh` 仍只服务开发者验证，不承担正式授权发放职责
 - 激活成功后会在 `~/.wxpilot/license.json` 落地本机绑定的签名证书
 - 同一 key 当前实现只允许首绑一台机器；第二台机器激活会被拒绝
 - 后续日常命令只做本地验签与机器指纹比对，不依赖在线服务
 - 删除或篡改 `~/.wxpilot/license.json` 后，CLI 会恢复到未激活状态
+- 当前客户端只内嵌一个公钥；密钥轮换后必须用新的 `client.env` 重新执行 `make local-build`
 
 ## License 服务部署
 
 当前推荐的最小上线方案是 `docker compose + wxp-license-server + SQLite volume`，不单独拆 MySQL。README 只保留高频入口，低层 docker/script 细节统一放到部署文档。
 
 ```bash
+make license-gen-materials KEY_ID=staging-20260511
+cp .wxpilot-license/server.env .env
 make license-compose-up
 make license-compose-ps
 make license-compose-logs
@@ -215,9 +239,12 @@ make license-backup DB=./data/license.db
 
 ### 真机回归前置
 
-1. 用发布构建环境变量重新执行 `make local-build && make local-install`
-2. 用 `make license-init-test-env KEY=<key>` 完成服务启动、健康检查和测试 key 初始化
-3. 在真机上执行 `wxpilot activate <key>`
+1. 执行 `make license-gen-materials KEY_ID=<env-date>`，并 `source .wxpilot-license/client.env`
+2. 用发布构建环境变量重新执行 `make local-build && make local-install`
+3. 将 `.wxpilot-license/server.env` 的内容合并到 `.env`
+4. 用 `make license-gen-key PREFIX=test COUNT=1 OUT_FILE=.wxpilot-license/license-keys.txt` 生成测试 key
+5. 用 `make license-init-test-env KEY=<key>` 完成服务启动、健康检查和测试 key 初始化
+6. 在真机上执行 `wxpilot activate <key>`
 4. 激活后按 README 命令表回归所有受限命令
 
 更完整的部署与备份说明见 [docs/license-server-deploy.md](docs/license-server-deploy.md)。

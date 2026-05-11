@@ -150,3 +150,10 @@ vite.config.ts.timestamp-*
 
 # Codex
 .codex/
+
+# License materials
+.wxpilot-license/
+
+# data and backups
+backups/
+data/

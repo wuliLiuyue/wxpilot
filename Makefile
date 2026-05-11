@@ -1,4 +1,4 @@
-.PHONY: build test lint rust-cli-build rust-cli-help rust-test local-build local-install local-install-test local-install-all license-compose-up license-compose-down license-compose-logs license-compose-ps license-seed license-backup license-init-test-env release-env-test
+.PHONY: build test lint rust-cli-build rust-cli-help rust-test local-build local-install local-install-test local-install-all license-script-test license-gen-materials license-gen-key license-verify-materials license-compose-up license-compose-down license-compose-logs license-compose-ps license-seed license-backup license-init-test-env release-env-test
 
 build:
 	pnpm build
@@ -31,10 +31,24 @@ local-install-test:
 	bash scripts/verify/local-build-smoke.sh
 	bash scripts/verify/release-env-smoke.sh
 	bash scripts/verify/local-install-smoke.sh
+	$(MAKE) license-script-test
 
 local-install-all:
 	$(MAKE) local-build
 	$(MAKE) local-install
+
+license-gen-materials:
+	bash scripts/license/gen-license-materials.sh "$(if $(OUT_DIR),$(OUT_DIR),.wxpilot-license)" "$(if $(KEY_ID),$(KEY_ID),)" "$(if $(SERVER_URL),$(SERVER_URL),http://127.0.0.1:8787)"
+
+license-gen-key:
+	bash scripts/license/gen-license-key.sh "$(if $(COUNT),$(COUNT),1)" "$(if $(PREFIX),$(PREFIX),test)" "$(if $(OUT_FILE),$(OUT_FILE),)"
+
+license-verify-materials:
+	bash scripts/license/verify-license-materials.sh "$(if $(SERVER_ENV),$(SERVER_ENV),.wxpilot-license/server.env)" "$(if $(CLIENT_ENV),$(CLIENT_ENV),.wxpilot-license/client.env)" "$(if $(KEY_FILE),$(KEY_FILE),)"
+
+license-script-test:
+	bash scripts/verify/license-materials-smoke.sh
+	bash scripts/verify/license-key-smoke.sh
 
 license-compose-up:
 	bash scripts/license/deploy-compose.sh up
