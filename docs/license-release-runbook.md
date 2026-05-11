@@ -6,6 +6,19 @@
 
 ## 1. Prepare Release Variables
 
+先生成授权材料：
+
+```bash
+make license-gen-materials KEY_ID=prod-20260511
+make license-verify-materials
+```
+
+默认会输出到 `.wxpilot-license/`：
+
+- `.wxpilot-license/server.env`
+- `.wxpilot-license/client.env`
+- `.wxpilot-license/manifest.env`
+
 客户端 release 构建前必须准备：
 
 - `WXP_LICENSE_SERVER_URL`
@@ -19,15 +32,15 @@
 ## 2. Validate Release Build Preconditions
 
 ```bash
+set -a
+source .wxpilot-license/client.env
+set +a
 make release-env-test
 ```
 
 ## 3. Build And Install Client Binaries
 
 ```bash
-export WXP_LICENSE_SERVER_URL="https://license.example.com"
-export WXP_LICENSE_EMBEDDED_PUBLIC_KEY_HEX="<public-key-hex>"
-
 make local-build
 make local-install
 ```
@@ -37,14 +50,16 @@ make local-install
 按 [license-server-deploy.md](license-server-deploy.md) 完成：
 
 1. `.env` 初始化
-2. `make license-compose-up`
-3. `make license-compose-ps`
-4. `curl -fsS http://127.0.0.1:8787/healthz`
+2. 将 `.wxpilot-license/server.env` 的内容写入 `.env`
+3. `make license-compose-up`
+4. `make license-compose-ps`
+5. `curl -fsS http://127.0.0.1:8787/healthz`
 
 ## 5. Initialize Test Environment
 
 ```bash
-make license-init-test-env KEY=lic-e2e-001
+make license-gen-key PREFIX=test COUNT=1 OUT_FILE=.wxpilot-license/license-keys.txt
+make license-init-test-env KEY=$(head -n 1 .wxpilot-license/license-keys.txt)
 ```
 
 这一步会：
@@ -81,6 +96,8 @@ make license-compose-ps
 - [ ] 已执行 `make release-env-test`
 - [ ] `WXP_LICENSE_SERVER_URL` 为正式服务地址
 - [ ] `WXP_LICENSE_EMBEDDED_PUBLIC_KEY_HEX` 与服务端私钥匹配
+- [ ] 已执行 `make license-gen-materials KEY_ID=<prod-date>`
+- [ ] 已执行 `make license-verify-materials`
 - [ ] 已执行 `make local-build`
 - [ ] 已执行 `make local-install`
 - [ ] 已复制 `.env.example` 为 `.env`
@@ -99,6 +116,7 @@ make license-compose-ps
 ```bash
 make license-compose-down
 # 恢复备份的 data/license.db 与 .env
+# 如需回滚客户端，同时恢复旧版 client.env 后重新构建发布包
 make license-compose-up
 make license-compose-ps
 ```

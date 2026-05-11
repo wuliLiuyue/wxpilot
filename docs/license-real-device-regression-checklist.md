@@ -14,6 +14,8 @@
 
 ## Preflight
 
+- [ ] 已执行 `make license-gen-materials KEY_ID=<env-date>`
+- [ ] 已执行 `make license-verify-materials`
 - [ ] 已设置 `WXP_LICENSE_SERVER_URL`
 - [ ] 已设置 `WXP_LICENSE_EMBEDDED_PUBLIC_KEY_HEX`
 - [ ] 已执行 `make local-build`
