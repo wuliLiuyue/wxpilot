@@ -228,7 +228,8 @@ wxpilot daemon restart
 
 ```bash
 make license-gen-materials KEY_ID=staging-20260511
-cp .wxpilot-license/server.env .env
+cp .env.example .env
+# 将 .wxpilot-license/server.env 中的值写入 .env
 make license-compose-up
 make license-compose-ps
 make license-compose-logs
@@ -245,7 +246,9 @@ make license-backup DB=./data/license.db
 4. 用 `make license-gen-key PREFIX=test COUNT=1 OUT_FILE=.wxpilot-license/license-keys.txt` 生成测试 key
 5. 用 `make license-init-test-env KEY=<key>` 完成服务启动、健康检查和测试 key 初始化
 6. 在真机上执行 `wxpilot activate <key>`
-4. 激活后按 README 命令表回归所有受限命令
+7. 激活后按 README 命令表回归所有受限命令
+
+生产环境如果通过阿里云 ECS 宝塔面板直接拉镜像部署，不使用仓库内 `docker compose` 作为默认入口；`compose.prod.yaml` 仅作为环境变量、端口和 volume 配置对照模板，实际操作以 [docs/license-server-deploy.md](docs/license-server-deploy.md) 和 [docs/license-release-runbook.md](docs/license-release-runbook.md) 为准。
 
 更完整的部署与备份说明见 [docs/license-server-deploy.md](docs/license-server-deploy.md)。
 真机回归记录模板见 [docs/license-real-device-regression-checklist.md](docs/license-real-device-regression-checklist.md)。
