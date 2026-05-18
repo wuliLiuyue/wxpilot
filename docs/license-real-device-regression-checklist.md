@@ -14,68 +14,68 @@
 
 ## Preflight
 
-- [ ] 已执行 `make license-gen-materials KEY_ID=<env-date>`
-- [ ] 已执行 `make license-verify-materials`
-- [ ] 已设置 `WXP_LICENSE_SERVER_URL`
-- [ ] 已设置 `WXP_LICENSE_EMBEDDED_PUBLIC_KEY_HEX`
-- [ ] 已执行 `make local-build`
-- [ ] 已执行 `make local-install`
-- [ ] 已执行 `make license-compose-up`
-- [ ] `make license-compose-ps` 显示服务正常
-- [ ] `curl -fsS http://127.0.0.1:8787/healthz` 成功
-- [ ] 已执行 `make license-seed DB=./data/license.db KEY=<key>`
+- [x] 已执行 `make license-gen-materials KEY_ID=<env-date>`
+- [x] 已执行 `make license-verify-materials`
+- [x] 已设置 `WXP_LICENSE_SERVER_URL`
+- [x] 已设置 `WXP_LICENSE_EMBEDDED_PUBLIC_KEY_HEX`
+- [x] 已执行 `make local-build`
+- [x] 已执行 `make local-install`
+- [x] 已执行 `make license-compose-up`
+- [x] `make license-compose-ps` 显示服务正常
+- [x] `curl -fsS http://127.0.0.1:8787/healthz` 成功
+- [x] 已执行 `make license-seed DB=./data/license.db KEY=<key>`
 
 ## Gate Before Activation
 
-- [ ] `wxpilot --help` 成功
-- [ ] `wxpilot --version` 成功
-- [ ] `wxpilot status` 被拦截
-- [ ] `wxpilot start <project>` 被拦截
-- [ ] `wxpilot connect` 被拦截
-- [ ] `wxpilot view` 被拦截
+- [x] `wxpilot --help` 成功
+- [x] `wxpilot --version` 成功
+- [x] `wxpilot status` 被拦截
+- [x] `wxpilot start <project>` 被拦截
+- [x] `wxpilot connect` 被拦截
+- [x] `wxpilot view` 被拦截
 
 ## Activation
 
-- [ ] `wxpilot activate <key>` 成功
-- [ ] `~/.wxpilot/license.json` 已生成
-- [ ] `wxpilot status` 不再被授权门禁拦截
+- [x] `wxpilot activate <key>` 成功
+- [x] `~/.wxpilot/license.json` 已生成
+- [x] `wxpilot status` 不再被授权门禁拦截
 
 ## Command Regression After Activation
 
-- [ ] `wxpilot start <project>`
-- [ ] `wxpilot connect`
-- [ ] `wxpilot disconnect`
-- [ ] `wxpilot status`
-- [ ] `wxpilot goto <route>`
-- [ ] `wxpilot back`
-- [ ] `wxpilot reload`
-- [ ] `wxpilot view`
-- [ ] `wxpilot find <query>`
-- [ ] `wxpilot wait %N`
-- [ ] `wxpilot tap %N`
-- [ ] `wxpilot type %N <text>`
-- [ ] `wxpilot scroll %N <up|down>`
-- [ ] `wxpilot read %N`
-- [ ] `wxpilot assert %N <expected>`
-- [ ] `wxpilot state`
-- [ ] `wxpilot shot`
-- [ ] `wxpilot run <js>`
-- [ ] `wxpilot wx <method>`
-- [ ] `wxpilot net start`
-- [ ] `wxpilot net stop`
-- [ ] `wxpilot net log`
-- [ ] `wxpilot net mock`
-- [ ] `wxpilot net unmock`
-- [ ] `wxpilot net clear`
-- [ ] `wxpilot net install-ca`
-- [ ] `wxpilot daemon stop`
-- [ ] `wxpilot daemon restart`
+- [x] `wxpilot start <project>`
+- [x] `wxpilot connect`
+- [x] `wxpilot disconnect`
+- [x] `wxpilot status`
+- [x] `wxpilot goto <route>`
+- [x] `wxpilot back`
+- [x] `wxpilot reload`
+- [x] `wxpilot view`
+- [x] `wxpilot find <query>`
+- [x] `wxpilot wait %N`
+- [x] `wxpilot tap %N`
+- [x] `wxpilot type %N <text>`
+- [x] `wxpilot scroll %N <up|down>`
+- [x] `wxpilot read %N`
+- [x] `wxpilot assert %N <expected>`
+- [x] `wxpilot state`
+- [x] `wxpilot shot`
+- [x] `wxpilot run <js>`
+- [x] `wxpilot wx <method>`
+- [x] `wxpilot net start`
+- [x] `wxpilot net stop`
+- [x] `wxpilot net log`
+- [x] `wxpilot net mock`
+- [x] `wxpilot net unmock`
+- [x] `wxpilot net clear`
+- [x] `wxpilot net install-ca`
+- [x] `wxpilot daemon stop`
+- [x] `wxpilot daemon restart`
 
 ## License Failure Regression
 
-- [ ] 篡改 `~/.wxpilot/license.json` 后，受限命令报“本地激活凭证无效”
-- [ ] 删除 `~/.wxpilot/license.json` 后，受限命令报“当前发布版需要先激活”
-- [ ] 第二台机器使用同一 key 激活时被拒绝
+- [x] 篡改 `~/.wxpilot/license.json` 后，受限命令报“本地激活凭证无效”
+- [x] 删除 `~/.wxpilot/license.json` 后，受限命令报“当前发布版需要先激活”
+- [x] 第二台机器使用同一 key 激活时被拒绝
 
 ## Notes
 
