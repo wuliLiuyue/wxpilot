@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/wxpilot.png" alt="wxpilot logo" width="100" />
+</p>
+
 # wxpilot
 
 面向 AI Agent 的微信小程序自动化 CLI 工具。通过 Unix Domain Socket 与后台 Daemon 通信，Daemon 控制微信开发者工具完成页面操作、元素交互和网络代理。
