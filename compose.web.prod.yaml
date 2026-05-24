@@ -1,0 +1,12 @@
+services:
+  wxpilot-web:
+    image: ${WXP_WEB_IMAGE:?set WXP_WEB_IMAGE in .env}
+    container_name: wxpilot-web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
