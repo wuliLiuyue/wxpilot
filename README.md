@@ -259,6 +259,10 @@ make license-backup DB=./data/license.db
 完整发布串联、上线检查与回滚说明见 [docs/license-release-runbook.md](docs/license-release-runbook.md)。
 授权证书与激活接口契约见 [packages/contracts/docs/license-activation-adr.md](packages/contracts/docs/license-activation-adr.md)。
 
+## 官网部署
+
+官网是纯静态站点，推荐用 Docker 镜像 + Compose 编排后接入宝塔反代。部署细节见 [docs/web-deploy.md](docs/web-deploy.md)。
+
 ## 全局选项
 
 ```
