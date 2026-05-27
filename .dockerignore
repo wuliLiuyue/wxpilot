@@ -1,0 +1,11 @@
+.git
+.omx
+.codex
+node_modules
+dist
+rust/target
+tmp
+data
+packages/*/dist
+packages/*/node_modules
+packages/*/coverage
