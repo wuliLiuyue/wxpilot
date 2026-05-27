@@ -32,11 +32,28 @@ pub fn render_command_ok(command: &CliCommand, payload: &Value, mode: OutputMode
     }
 
     match command {
+        CliCommand::Activate { .. } => render_activate(payload),
         CliCommand::NetStart { .. } => render_net_start(payload),
         CliCommand::NetLog { .. } => render_net_log(payload),
         CliCommand::NetInstallCa => render_net_install_ca(payload),
         _ => render_ok(payload, mode),
     }
+}
+
+fn render_activate(payload: &Value) -> String {
+    let Some(path) = payload.get("path").and_then(Value::as_str) else {
+        return render_ok(payload, OutputMode::Human);
+    };
+    let license_id = payload
+        .get("licenseId")
+        .and_then(Value::as_str)
+        .unwrap_or("-");
+    let machine_fingerprint = payload
+        .get("machineFingerprint")
+        .and_then(Value::as_str)
+        .unwrap_or("-");
+
+    format!("OK: 激活成功\nlicense: {license_id}\nmachine: {machine_fingerprint}\npath: {path}")
 }
 
 pub fn render_error(message: &str, extra: Option<Value>, mode: OutputMode) -> String {

@@ -1,0 +1,14 @@
+services:
+  wxpilot-web:
+    build:
+      context: .
+      dockerfile: packages/web/Dockerfile
+    container_name: wxpilot-web
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
