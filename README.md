@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/wxpilot.png" alt="wxpilot logo" width="100" />
+</p>
+
 # wxpilot
 
 面向 AI Agent 的微信小程序自动化 CLI 工具。通过 Unix Domain Socket 与后台 Daemon 通信，Daemon 控制微信开发者工具完成页面操作、元素交互和网络代理。
@@ -13,11 +17,31 @@ cargo build -p wxp-daemon --bin wxp-daemon
 
 当前仓库以 Rust CLI / Rust daemon 为默认实现。TypeScript CLI / daemon 代码仍保留在 `packages/`，仅作为迁移期对照实现与契约回归基线，不再作为主使用路径。
 
+> 说明：本 README 同时覆盖两条使用路径。
+> 1. 上面的 `cargo build` 面向仓库开发者本地调试。
+> 2. 下文的 `make local-build` / `make local-install` 仅用于开发者验证发布构建，不等于正式对外发布安装流程。
+> 正式发布版的授权限制、激活方式和部署入口统一见后文“授权与激活”“License 服务部署”。
+
 ## 开发者本地打包与安装
 
 面向仓库开发者的本地闭环，不是正式发布安装方案。
 
 ```bash
+# 先生成授权材料（默认输出到 .wxpilot-license/）
+make license-gen-materials KEY_ID=dev-20260511
+
+# 本地回归测试可显式指定本地 license server
+make license-gen-materials KEY_ID=dev-20260511 SERVER_URL=http://127.0.0.1:8787
+
+# 查看生成结果
+cat .wxpilot-license/client.env
+cat .wxpilot-license/server.env
+
+# 将客户端构建变量注入当前 shell
+set -a
+source .wxpilot-license/client.env
+set +a
+
 # 先构建 macOS arm64 / x86_64 本地二进制
 make local-build
 
@@ -47,6 +71,14 @@ make local-install-test
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+如果缺少上述两个环境变量，`make local-build` 会直接失败，避免产出无法激活的发布包。生成材料后可执行：
+
+```bash
+make license-verify-materials
+```
+
+校验服务端私钥、客户端公钥和 `key id` 是否一致。
+
 ## 前置步骤
 
 微信开发者工具需已安装并启动。
@@ -54,7 +86,10 @@ export PATH="$HOME/.local/bin:$PATH"
 ## 快速开始
 
 ```bash
-# 第一步：启动自动化（自动检测 dist/project.config.json，或明确指定路径）
+# 第一步：激活发布版（仅需联网一次）
+wxpilot activate <key>
+
+# 第二步：启动自动化（自动检测 dist/project.config.json，或明确指定路径）
 wxpilot start
 wxpilot start /path/to/miniprogram
 wxpilot start /path/to/miniprogram --proxy        # 抓包场景：启动项目前先自动拉起 8899 代理
@@ -62,7 +97,7 @@ wxpilot start /path/to/miniprogram --proxy        # 抓包场景：启动项目�
 # appid 为占位符时
 wxpilot start /path/to/miniprogram --appid wx你的AppID
 
-# 第二步：连接
+# 第三步：连接
 wxpilot connect
 
 # 查看页面，获取可交互元素引用 %N（默认已是紧凑摘要）
@@ -98,6 +133,7 @@ wxpilot shot /tmp/result.png
 
 ### 连接管理
 ```bash
+wxpilot activate <key>                            # 联网激活并把签名证书写入 ~/.wxpilot/license.json
 wxpilot start                                      # 自动检测 dist/project.config.json
 wxpilot start <projectPath>                        # 启动自动化（运行 cli auto，等待就绪）
 wxpilot start <projectPath> --appid <id>           # appid 为占位符时指定
@@ -146,8 +182,6 @@ wxpilot state [path]             # 指定子路径，如 "cart.items"
 wxpilot state --full             # 完整页面 data
 wxpilot shot [path]              # 截图，保存文件并返回路径
 wxpilot shot [path] --base64     # 截图并附带 base64
-wxpilot run <js>                 # 返回脚本执行结果
-wxpilot wx <method> [args...]    # 返回 wx 方法结果
 ```
 
 ### 网络代理
@@ -175,6 +209,59 @@ wxpilot wx <method> [args...]    # 调用 wx API
 wxpilot daemon stop
 wxpilot daemon restart
 ```
+
+## 授权与激活
+
+- 发布版**不是安装即用**；未激活时仅允许 `wxpilot activate <key>`、`wxpilot --help`、`wxpilot --version`
+- 用户购买后，通过 `wxpilot activate <key>` 完成一次联网激活
+- 发布版 CLI 在构建时必须内嵌激活服务地址 `WXP_LICENSE_SERVER_URL` 与授权公钥 `WXP_LICENSE_EMBEDDED_PUBLIC_KEY_HEX`
+- 授权材料建议统一通过 `make license-gen-materials KEY_ID=<env-date>` 生成，默认输出到 `.wxpilot-license/`
+- 本地回归测试可通过 `SERVER_URL=http://127.0.0.1:8787` 生成本地激活地址；正式环境再切到正式域名
+- 测试或发放用的 license key 建议通过 `make license-gen-key PREFIX=test COUNT=5 OUT_FILE=.wxpilot-license/license-keys.txt` 生成
+- 可用 `make license-verify-materials` 校验私钥、公钥和 `key id` 是否匹配；如需连同 key 文件一起校验，可传 `KEY_FILE=.wxpilot-license/license-keys.txt`
+- 本仓当前 `make local-build` / `make local-install` / `scripts/local/install-macos-binaries.sh` 仍只服务开发者验证，不承担正式授权发放职责
+- 激活成功后会在 `~/.wxpilot/license.json` 落地本机绑定的签名证书
+- 同一 key 当前实现只允许首绑一台机器；第二台机器激活会被拒绝
+- 后续日常命令只做本地验签与机器指纹比对，不依赖在线服务
+- 删除或篡改 `~/.wxpilot/license.json` 后，CLI 会恢复到未激活状态
+- 当前客户端只内嵌一个公钥；密钥轮换后必须用新的 `client.env` 重新执行 `make local-build`
+
+## License 服务部署
+
+当前推荐的最小上线方案是 `docker compose + wxp-license-server + SQLite volume`，不单独拆 MySQL。README 只保留高频入口，低层 docker/script 细节统一放到部署文档。
+
+```bash
+make license-gen-materials KEY_ID=staging-20260511
+cp .env.example .env
+# 将 .wxpilot-license/server.env 中的值写入 .env
+make license-compose-up
+make license-compose-ps
+make license-compose-logs
+make license-init-test-env KEY=lic-e2e-001
+make license-seed DB=./data/license.db KEY=lic-e2e-001
+make license-backup DB=./data/license.db
+```
+
+### 真机回归前置
+
+1. 执行 `make license-gen-materials KEY_ID=<env-date>`，并 `source .wxpilot-license/client.env`
+2. 用发布构建环境变量重新执行 `make local-build && make local-install`
+3. 将 `.wxpilot-license/server.env` 的内容合并到 `.env`
+4. 用 `make license-gen-key PREFIX=test COUNT=1 OUT_FILE=.wxpilot-license/license-keys.txt` 生成测试 key
+5. 用 `make license-init-test-env KEY=<key>` 完成服务启动、健康检查和测试 key 初始化
+6. 在真机上执行 `wxpilot activate <key>`
+7. 激活后按 README 命令表回归所有受限命令
+
+生产环境如果通过阿里云 ECS 宝塔面板直接拉镜像部署，不使用仓库内 `docker compose` 作为默认入口；`compose.prod.yaml` 仅作为环境变量、端口和 volume 配置对照模板，实际操作以 [docs/license-server-deploy.md](docs/license-server-deploy.md) 和 [docs/license-release-runbook.md](docs/license-release-runbook.md) 为准。
+
+更完整的部署与备份说明见 [docs/license-server-deploy.md](docs/license-server-deploy.md)。
+真机回归记录模板见 [docs/license-real-device-regression-checklist.md](docs/license-real-device-regression-checklist.md)。
+完整发布串联、上线检查与回滚说明见 [docs/license-release-runbook.md](docs/license-release-runbook.md)。
+授权证书与激活接口契约见 [packages/contracts/docs/license-activation-adr.md](packages/contracts/docs/license-activation-adr.md)。
+
+## 官网部署
+
+官网是纯静态站点，推荐用 Docker 镜像 + Compose 编排后接入宝塔反代。部署细节见 [docs/web-deploy.md](docs/web-deploy.md)。
 
 ## 全局选项
 
@@ -204,9 +291,3 @@ wxpilot daemon restart
 3. `start` 里仍保留了“代理错误时自动兜底重试”的兼容逻辑，但它不是主流程，不应替代显式 `--proxy`
 4. `net install-ca` 安装后必须**完全重启**开发者工具才生效
 5. HTTP 模式下 HTTPS 请求透明隧道放行（不记录）；要记录 HTTPS 流量必须用 `--https` 模式
-
-## 迁移期说明
-
-- 当前主力运行链路是 Rust CLI / Rust daemon
-- `packages/cli`、`packages/daemon`、`packages/contracts` 仍保留，用于迁移期对照与契约回归
-- 若只做 Rust 主链路验证，优先使用 `cargo` / `make rust-test`
