@@ -1,0 +1,92 @@
+# wxpilot
+
+wxpilot 是面向 AI Agent 的微信小程序自动化 CLI。这个公开仓库只提供发布版安装、使用说明、skill 集成和 release 下载，不公开实现细节。
+
+## 平台支持
+
+- macOS Apple Silicon
+- macOS Intel
+- 已安装并启动微信开发者工具
+- 已获取可用的激活码
+
+## 安装
+
+安装最新版：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/__PUBLIC_REPO__/main/install.sh | bash
+```
+
+安装指定版本：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/__PUBLIC_REPO__/main/install.sh | bash -s -- --version __EXAMPLE_VERSION__
+```
+
+默认安装位置：
+
+- `~/.local/bin/wxpilot`
+- `~/.wxpilot/bin/wxp-daemon`
+
+如果提示 `wxpilot: command not found`，把 `~/.local/bin` 加入 `PATH`：
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+## 激活
+
+```bash
+wxpilot activate <license-key>
+```
+
+激活成功后即可开始使用。
+
+## 快速开始
+
+```bash
+wxpilot start
+wxpilot connect
+wxpilot find 提交
+wxpilot tap %1
+```
+
+如果当前目录下没有唯一的 `dist/project.config.json`，显式传入小程序目录：
+
+```bash
+wxpilot start /path/to/miniprogram
+```
+
+常见操作：
+
+```bash
+wxpilot view
+wxpilot goto /pages/order/index
+wxpilot type %2 "13800138000"
+wxpilot state cart.total
+wxpilot shot /tmp/result.png
+wxpilot start /path/to/miniprogram --proxy
+```
+
+## Skill 集成
+
+将 skill 安装到 Codex 本地目录：
+
+```bash
+mkdir -p ~/.codex/skills/wxpilot
+curl -fsSL https://raw.githubusercontent.com/__PUBLIC_REPO__/main/skill/SKILL.md -o ~/.codex/skills/wxpilot/SKILL.md
+```
+
+安装后，Agent 可以直接把 `wxpilot` 作为小程序自动化技能使用。
+
+## Releases
+
+发布页：
+
+- `https://github.com/__PUBLIC_REPO__/releases`
+
+当前 release 资产：
+
+- `wxpilot-darwin-arm64.tar.gz`
+- `wxpilot-darwin-x64.tar.gz`
+- `wxpilot-checksums.txt`
