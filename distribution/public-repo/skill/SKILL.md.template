@@ -1,0 +1,63 @@
+---
+name: wxpilot
+description: 使用 wxpilot CLI 操作微信小程序，包括启动、连接、页面导航、元素交互、读取页面状态、截图和抓包。
+---
+
+# wxpilot
+
+当任务需要操作微信小程序页面、点击元素、输入文本、读取页面状态或抓包时使用这个技能。
+
+## 前置检查
+
+1. 微信开发者工具已安装并启动
+2. `wxpilot` 已安装并完成激活
+3. 当前工作目录存在唯一 `dist/project.config.json` 时，可以直接运行 `wxpilot start`
+4. 如果存在多个候选项目目录，优先显式传入路径
+
+## 快速流程
+
+```bash
+wxpilot start
+wxpilot connect
+wxpilot find 提交
+wxpilot tap %1
+```
+
+如果自动检测不到项目目录：
+
+```bash
+wxpilot start /path/to/miniprogram
+wxpilot connect
+```
+
+## 工作规则
+
+- 优先用 `wxpilot find <query>`，只在需要完整上下文时再用 `wxpilot view`
+- 执行 `goto`、`back`、`reload` 后，重新运行 `find` 或 `view` 获取新的 `%N`
+- 优先用 `wxpilot state <path>` 读取单个字段，避免一次性读取完整页面数据
+- 只有在需要视觉证据或要做图像分析时才运行 `wxpilot shot`
+- 抓包场景优先使用 `wxpilot start <projectPath> --proxy`
+
+## 常用命令
+
+```bash
+wxpilot start
+wxpilot start /path/to/miniprogram --proxy
+wxpilot connect
+wxpilot status
+wxpilot view
+wxpilot find 提交
+wxpilot tap %1
+wxpilot type %2 "13800138000"
+wxpilot goto /pages/order/index
+wxpilot state cart.total
+wxpilot shot /tmp/result.png
+wxpilot net log --filter api.example.com
+```
+
+## 失败恢复
+
+- `ref expired`：重新运行 `wxpilot find` 或 `wxpilot view`
+- `not connected`：先执行 `wxpilot connect`
+- 页面没有刷新到目标状态：补一次 `wxpilot wait %N` 或重新 `goto`
+- 代理抓包无数据：确认本次是用 `--proxy` 启动，且页面请求已经实际发出
