@@ -1,4 +1,4 @@
-.PHONY: build test lint rust-cli-build rust-cli-help rust-test local-build local-install local-install-test local-install-all license-script-test license-gen-materials license-gen-key license-verify-materials license-compose-up license-compose-down license-compose-logs license-compose-ps license-seed license-backup license-init-test-env release-env-test
+.PHONY: build test lint rust-cli-build rust-cli-help rust-test local-build local-install local-install-test local-install-all license-script-test license-gen-materials license-gen-key license-verify-materials license-compose-up license-compose-down license-compose-logs license-compose-ps license-seed license-backup license-init-test-env release-env-test public-release-package public-repo-render public-distribution-test
 
 build:
 	pnpm build
@@ -85,3 +85,21 @@ license-init-test-env:
 
 release-env-test:
 	bash scripts/verify/release-env-smoke.sh
+
+public-release-package:
+	@if [ -z "$(VERSION)" ]; then \
+		echo "usage: make public-release-package VERSION=v0.1.0 [OUT_DIR=dist/public-release/v0.1.0]" >&2; \
+		exit 1; \
+	fi
+	bash scripts/release/package-public-release.sh --version "$(VERSION)" $(if $(OUT_DIR),--output-dir "$(OUT_DIR)",)
+
+public-repo-render:
+	@if [ -z "$(VERSION)" ] || [ -z "$(REPO)" ]; then \
+		echo "usage: make public-repo-render REPO=owner/name VERSION=v0.1.0 [OUT_DIR=dist/public-repo]" >&2; \
+		exit 1; \
+	fi
+	bash scripts/release/render-public-repo.sh --repo "$(REPO)" --version "$(VERSION)" $(if $(OUT_DIR),--output-dir "$(OUT_DIR)",)
+
+public-distribution-test:
+	bash scripts/verify/public-release-package-smoke.sh
+	bash scripts/verify/public-installer-smoke.sh
