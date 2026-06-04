@@ -217,6 +217,7 @@ wxpilot daemon restart
 - 发布版 CLI 在构建时必须内嵌激活服务地址 `WXP_LICENSE_SERVER_URL` 与授权公钥 `WXP_LICENSE_EMBEDDED_PUBLIC_KEY_HEX`
 - 授权材料建议统一通过 `make license-gen-materials KEY_ID=<env-date>` 生成，默认输出到 `.wxpilot-license/`
 - 本地回归测试可通过 `SERVER_URL=http://127.0.0.1:8787` 生成本地激活地址；正式环境再切到正式域名
+- 当前正式域名约定为：官网 `https://your-domain.com`，激活服务 `https://<domain>/wxpilot-api`
 - 测试或发放用的 license key 建议通过 `make license-gen-key PREFIX=test COUNT=5 OUT_FILE=.wxpilot-license/license-keys.txt` 生成
 - 可用 `make license-verify-materials` 校验私钥、公钥和 `key id` 是否匹配；如需连同 key 文件一起校验，可传 `KEY_FILE=.wxpilot-license/license-keys.txt`
 - 本仓当前 `make local-build` / `make local-install` / `scripts/local/install-macos-binaries.sh` 仍只服务开发者验证，不承担正式授权发放职责
@@ -261,7 +262,7 @@ make license-backup DB=./data/license.db
 
 ## 官网部署
 
-官网是纯静态站点，推荐用 Docker 镜像 + Compose 编排后接入宝塔反代。部署细节见 [docs/web-deploy.md](docs/web-deploy.md)。
+官网是纯静态站点，当前正式站点域名为 `https://your-domain.com`，推荐用 Docker 镜像 + Compose 编排后接入宝塔反代。部署细节见 [docs/web-deploy.md](docs/web-deploy.md)。
 
 ## 全局选项
 
