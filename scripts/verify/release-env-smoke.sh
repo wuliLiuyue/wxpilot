@@ -60,7 +60,7 @@ run_missing_case() {
 }
 
 run_missing_case missing-public-key "WXP_LICENSE_EMBEDDED_PUBLIC_KEY_HEX" \
-  env WXP_LICENSE_SERVER_URL="https://license.example.com"
+  env WXP_LICENSE_SERVER_URL="https://feai.work/wxpilot-api"
 
 run_missing_case missing-server-url "WXP_LICENSE_SERVER_URL" \
   env WXP_LICENSE_EMBEDDED_PUBLIC_KEY_HEX="79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664"
