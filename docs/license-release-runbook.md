@@ -9,7 +9,7 @@
 先生成授权材料：
 
 ```bash
-make license-gen-materials KEY_ID=prod-main SERVER_URL=https://license.example.com
+make license-gen-materials KEY_ID=prod-main SERVER_URL=https://feai.work/wxpilot-api
 make license-verify-materials
 ```
 

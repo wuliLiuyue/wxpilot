@@ -54,7 +54,7 @@ make license-verify-materials
 生产构建目录中生成正式材料：
 
 ```bash
-make license-gen-materials KEY_ID=prod-main SERVER_URL=https://license.example.com
+make license-gen-materials KEY_ID=prod-main SERVER_URL=https://feai.work/wxpilot-api
 make license-verify-materials
 ```
 
@@ -204,7 +204,7 @@ curl -fsS http://127.0.0.1:8787/healthz
 2. 与客户端配置一致的正式地址检查：
 
 ```bash
-curl -fsS https://license.example.com/healthz
+curl -fsS https://feai.work/wxpilot-api/healthz
 ```
 
 第二步不能省略。客户端实际激活走的是 `WXP_LICENSE_SERVER_URL`，如果域名、反向代理、证书或公网访问控制配置错误，本机 `127.0.0.1` 检查仍然可能通过。
