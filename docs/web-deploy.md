@@ -8,6 +8,11 @@ wxpilot 官网是纯静态站点，生产部署推荐采用：
 - Docker Compose 负责容器编排
 - 宝塔面板只负责域名、HTTPS 和反向代理
 
+当前正式域名约定：
+
+- 官网：`https://feai.work`
+- 激活服务：`https://feai.work/wxpilot-api`
+
 ## 文件
 
 - `packages/web/Dockerfile`
@@ -36,7 +41,7 @@ docker push registry.cn-<region>.aliyuncs.com/<namespace>/wxpilot-web:<tag>
 2. 如果镜像仓库是私有的，先执行 `docker login`。
 3. 复制 `.env.web.example` 为 `.env.web`，并填写 `WXP_WEB_IMAGE=registry.cn-<region>.aliyuncs.com/<namespace>/wxpilot-web:<tag>`。
 4. 执行 `docker compose --env-file .env.web -f compose.web.prod.yaml pull && docker compose --env-file .env.web -f compose.web.prod.yaml up -d`。
-5. 在宝塔面板里新增网站，反向代理到 `127.0.0.1:8080`。
+5. 在宝塔面板里新增网站 `feai.work`，反向代理到 `127.0.0.1:8080`。
 6. 在宝塔里申请并绑定 HTTPS 证书。
 7. 安全组只放行 80/443，`8080` 保持本机监听即可。
 

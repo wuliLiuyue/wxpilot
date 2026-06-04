@@ -2,6 +2,13 @@
 
 本 runbook 用于把当前私有仓库里的发布产物整理成对外分发形态：公开仓库只保留安装、用法、skill 和 release 资产，不暴露实现细节。
 
+当前对外域名约定：
+
+- 官网：`https://feai.work`
+- 激活服务：`https://feai.work/wxpilot-api`
+
+其中激活服务地址只影响 release 构建时注入的 `WXP_LICENSE_SERVER_URL`，不要求更换现有密钥材料。
+
 ## 目标形态
 
 公开仓库建议只包含以下内容：
