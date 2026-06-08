@@ -1,6 +1,6 @@
 # wxpilot
 
-wxpilot 是面向 AI Agent 的微信小程序自动化 CLI。这个公开仓库只提供发布版安装、使用说明、skill 集成和 release 下载，不公开实现细节。
+wxpilot 是面向 AI Agent 的微信小程序自动化 CLI。
 
 ## 平台支持
 
