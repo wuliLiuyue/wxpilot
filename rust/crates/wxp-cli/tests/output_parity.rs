@@ -120,27 +120,6 @@ fn renders_net_install_ca_human_output_like_ts_cli() {
 }
 
 #[test]
-fn renders_activate_human_output() {
-    let rendered = render_command_ok(
-        &CliCommand::Activate {
-            key: "lic_123".into(),
-        },
-        &json!({
-            "ok": true,
-            "licenseId": "lic_123",
-            "machineFingerprint": "abc123",
-            "path": "/tmp/license.json"
-        }),
-        OutputMode::Human,
-    );
-
-    assert_eq!(
-        rendered,
-        "OK: 激活成功\nlicense: lic_123\nmachine: abc123\npath: /tmp/license.json"
-    );
-}
-
-#[test]
 fn renders_net_log_human_output_like_ts_cli() {
     let ts = Utc
         .with_ymd_and_hms(2026, 4, 8, 3, 0, 0)

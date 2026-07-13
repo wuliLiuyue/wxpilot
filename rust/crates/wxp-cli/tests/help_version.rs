@@ -9,7 +9,6 @@ fn prints_help_from_wxpilot_binary() {
         .assert()
         .success()
         .stdout(predicate::str::contains("AI Agent 微信小程序自动化 CLI"))
-        .stdout(predicate::str::contains("activate"))
         .stdout(predicate::str::contains("start"))
         .stdout(predicate::str::contains("net"));
 }

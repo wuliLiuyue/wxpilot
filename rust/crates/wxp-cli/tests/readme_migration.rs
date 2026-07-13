@@ -12,8 +12,4 @@ fn readme_uses_rust_cli_as_primary_guide() {
     assert!(readme.contains("~/.local/bin/wxpilot"));
     assert!(readme.contains("~/.wxpilot/bin/wxp-daemon"));
     assert!(readme.contains("wxpilot start <projectPath> --proxy"));
-    assert!(readme.contains("WXP_LICENSE_SERVER_URL"));
-    assert!(readme.contains("make license-compose-up"));
-    assert!(readme.contains("make license-init-test-env"));
-    assert!(readme.contains("license-release-runbook.md"));
 }

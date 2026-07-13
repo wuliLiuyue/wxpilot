@@ -15,7 +15,6 @@ use wxp_common::{DAEMON_KIND, ERROR_REF_EXPIRED, RUST_PID_FILE, RUST_SOCKET_FILE
 use crate::command::CliCommand;
 use crate::daemon_client::{connect_to_daemon, stop_daemon, ConnectDeps, ProbeResult, StopDeps};
 use crate::error::CliError;
-use crate::license::activate_license;
 use crate::project_detect::{detect_or_select_project, Selector};
 use crate::rpc_client::call_with_timeout;
 
@@ -28,9 +27,6 @@ pub struct RpcCall {
 
 pub fn build_rpc_call(command: &CliCommand) -> Result<RpcCall, CliError> {
     match command {
-        CliCommand::Activate { .. } => {
-            Err(CliError::Message("activate does not use daemon RPC".into()))
-        }
         CliCommand::Start {
             project_path,
             cli_path,
@@ -229,15 +225,6 @@ pub fn build_rpc_call(command: &CliCommand) -> Result<RpcCall, CliError> {
 
 pub fn execute(command: CliCommand) -> Result<Value, CliError> {
     match command {
-        CliCommand::Activate { key } => {
-            let activation = activate_license(&key)?;
-            Ok(json!({
-                "ok": true,
-                "licenseId": activation.license_id,
-                "machineFingerprint": activation.machine_fingerprint,
-                "path": activation.path,
-            }))
-        }
         CliCommand::Start {
             proxy,
             proxy_https,
