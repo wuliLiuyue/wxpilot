@@ -63,8 +63,6 @@ RUSTUP_BIN="$tmp/bin/rustup" \
 UNAME_BIN="$tmp/bin/uname" \
 WXP_RUST_TARGET_DIR="$tmp/target" \
 WXP_DIST_DIR="$tmp/dist" \
-WXP_LICENSE_SERVER_URL="https://feai.work/wxpilot-api" \
-WXP_LICENSE_EMBEDDED_PUBLIC_KEY_HEX="79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664" \
 bash "$repo_root/scripts/local/build-macos-binaries.sh" --all
 
 test -x "$tmp/dist/aarch64-apple-darwin/wxpilot"
