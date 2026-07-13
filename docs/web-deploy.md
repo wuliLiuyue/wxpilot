@@ -11,7 +11,6 @@ wxpilot 官网是纯静态站点，生产部署推荐采用：
 当前正式域名约定：
 
 - 官网：`https://feai.work`
-- 激活服务：`https://feai.work/wxpilot-api`
 
 ## 文件
 
