@@ -27,7 +27,6 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    Activate(ActivateArgs),
     Start(StartArgs),
     Connect(ConnectArgs),
     Disconnect,
@@ -51,11 +50,6 @@ pub enum Commands {
     Net(NetCommands),
     #[command(subcommand)]
     Daemon(DaemonCommands),
-}
-
-#[derive(Debug, Args)]
-pub struct ActivateArgs {
-    pub key: String,
 }
 
 #[derive(Debug, Args)]

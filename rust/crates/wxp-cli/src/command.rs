@@ -1,8 +1,6 @@
 use std::convert::TryFrom;
 
-use crate::args::{
-    ActivateArgs, Cli, Commands, DaemonCommands, DaemonKindArg, FindArgs, NetCommands, StartArgs,
-};
+use crate::args::{Cli, Commands, DaemonCommands, DaemonKindArg, FindArgs, NetCommands, StartArgs};
 use crate::error::CliError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,9 +29,6 @@ impl From<DaemonKindArg> for DaemonKindOption {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CliCommand {
-    Activate {
-        key: String,
-    },
     Start {
         project_path: Option<String>,
         cli_path: Option<String>,
@@ -143,7 +138,6 @@ impl TryFrom<Cli> for CliCommand {
         let timeout_ms = cli.timeout;
 
         match cli.command {
-            Commands::Activate(ActivateArgs { key }) => Ok(Self::Activate { key }),
             Commands::Start(StartArgs {
                 project_path,
                 cli_path,
@@ -241,11 +235,5 @@ impl TryFrom<Cli> for CliCommand {
                 DaemonCommands::Restart => Ok(Self::DaemonRestart),
             },
         }
-    }
-}
-
-impl CliCommand {
-    pub fn is_license_exempt(&self) -> bool {
-        matches!(self, Self::Activate { .. })
     }
 }

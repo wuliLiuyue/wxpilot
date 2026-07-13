@@ -3,19 +3,6 @@ use wxp_cli::args::Cli;
 use wxp_cli::command::{CliCommand, DaemonKindOption};
 
 #[test]
-fn parses_activate_command() {
-    let cli = Cli::try_parse_from(["wxpilot", "activate", "lic-live-001"]).expect("parse");
-
-    let command = CliCommand::try_from(cli).expect("normalize");
-    assert_eq!(
-        command,
-        CliCommand::Activate {
-            key: "lic-live-001".into(),
-        }
-    );
-}
-
-#[test]
 fn parses_start_command_with_existing_flags() {
     let cli = Cli::try_parse_from([
         "wxpilot",
