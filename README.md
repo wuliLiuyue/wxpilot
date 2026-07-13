@@ -8,6 +8,26 @@
 
 ## 安装
 
+### 一键安装（macOS）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wuliLiuyue/wxpilot/main/install.sh | bash
+```
+
+指定版本安装：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wuliLiuyue/wxpilot/main/install.sh | bash -s -- --version v0.1.0
+```
+
+安装后 `wxpilot` 位于 `~/.local/bin/`，`wxp-daemon` 位于 `~/.wxpilot/bin/`。若 `~/.local/bin` 不在 PATH 中，按提示追加：
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+### 源码构建
+
 ```bash
 cd rust
 cargo build -p wxp-cli --bin wxpilot
@@ -17,9 +37,7 @@ cargo build -p wxp-daemon --bin wxp-daemon
 
 当前仓库以 Rust CLI / Rust daemon 为默认实现。TypeScript CLI / daemon 代码仍保留在 `packages/`，仅作为迁移期对照实现与契约回归基线，不再作为主使用路径。
 
-> 说明：本 README 同时覆盖两条使用路径。
-> 1. 上面的 `cargo build` 面向仓库开发者本地调试。
-> 2. 下文的 `make local-build` / `make local-install` 用于开发者验证发布构建与本地安装闭环。
+> 说明：源码 `cargo build` 面向仓库开发者本地调试；`make local-build` / `make local-install` 用于开发者验证发布构建与本地安装闭环。
 
 ## 开发者本地打包与安装
 
@@ -54,6 +72,26 @@ make local-install-test
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
+
+### 发布打包
+
+将本地构建产物打包为可分发归档（tar.gz + 校验和），用于上传到 GitHub Releases：
+
+```bash
+# 先构建产物（产物在 dist/local/<target>/）
+make local-build
+
+# 打包为 dist/public-release/<version>/ 下的 tar.gz + checksums
+make public-release-package VERSION=v0.1.0
+```
+
+产物：
+
+- `dist/public-release/v0.1.0/wxpilot-darwin-arm64.tar.gz`
+- `dist/public-release/v0.1.0/wxpilot-darwin-x64.tar.gz`
+- `dist/public-release/v0.1.0/wxpilot-checksums.txt`
+
+将这三个文件上传到 GitHub Releases 后，用户即可通过上文的 `install.sh` 一键安装。
 
 ## 前置步骤
 
