@@ -31,8 +31,10 @@ test -f "$tmp/output/wxpilot-checksums.txt"
 
 tar -tzf "$tmp/output/wxpilot-darwin-arm64.tar.gz" | grep -Fx 'wxpilot'
 tar -tzf "$tmp/output/wxpilot-darwin-arm64.tar.gz" | grep -Fx 'wxp-daemon'
+tar -tzf "$tmp/output/wxpilot-darwin-arm64.tar.gz" | grep -Fx 'LICENSE'
 tar -tzf "$tmp/output/wxpilot-darwin-x64.tar.gz" | grep -Fx 'wxpilot'
 tar -tzf "$tmp/output/wxpilot-darwin-x64.tar.gz" | grep -Fx 'wxp-daemon'
+tar -tzf "$tmp/output/wxpilot-darwin-x64.tar.gz" | grep -Fx 'LICENSE'
 
 grep -F 'wxpilot-darwin-arm64.tar.gz' "$tmp/output/wxpilot-checksums.txt"
 grep -F 'wxpilot-darwin-x64.tar.gz' "$tmp/output/wxpilot-checksums.txt"
