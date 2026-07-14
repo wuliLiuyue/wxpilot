@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/wxpilot.png" alt="wxpilot logo" width="100" />
+  <img src="docs/wxpilot.png" alt="wxpilot logo" width="250" />
 </p>
 
 <h1 align="center">wxpilot</h1>
