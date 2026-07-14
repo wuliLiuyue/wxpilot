@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="License" src="https://img.shields.io/badge/license-MIT-blue.svg" />
+  <img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg" />
   <img alt="Platform" src="https://img.shields.io/badge/platform-macOS-lightgrey.svg" />
   <img alt="Rust" src="https://img.shields.io/badge/rust-stable-orange.svg" />
   <img alt="Version" src="https://img.shields.io/badge/version-0.1.0-green.svg" />
@@ -382,4 +382,11 @@ make public-release-package VERSION=v0.1.0
 
 ## 许可证
 
-[MIT License](LICENSE) © wuliLiuyue
+本项目基于 [GNU Affero General Public License v3.0 或更高版本](LICENSE)（AGPL-3.0-or-later）© wuliLiuyue 开源。
+
+- ✅ 个人学习、研究、内部使用、修改、再分发均可（须保留版权声明并同样以 AGPL-3.0-or-later 开源）。
+- ✅ 商业使用亦被允许，但**衍生作品与通过网络提供的服务必须以 AGPL-3.0-or-later 公开源码**（即「传染式开源」）。
+- ❌ 不得将本项目或其衍生作品以闭源/专有形式分发或作为闭源服务对外提供。
+- 💼 如需将本项目嵌入闭源/专有商业产品或服务，请另行联系作者获取商业授权。
+
+相关第三方依赖（如 tokio、clap 等）仍遵循其各自的 MIT/Apache-2.0 等许可证。

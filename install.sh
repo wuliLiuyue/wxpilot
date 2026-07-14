@@ -174,6 +174,10 @@ install -d "$install_dir" "$daemon_dir"
 install -m 755 "$tmp/wxpilot" "$install_dir/wxpilot"
 install -m 755 "$tmp/wxp-daemon" "$daemon_dir/wxp-daemon"
 
+if [[ -f "$tmp/LICENSE" ]]; then
+  install -m 644 "$tmp/LICENSE" "$(dirname "$daemon_dir")/LICENSE"
+fi
+
 echo "installed wxpilot from $asset"
 echo "  wxpilot    -> $install_dir/wxpilot"
 echo "  wxp-daemon -> $daemon_dir/wxp-daemon"
