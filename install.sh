@@ -5,11 +5,11 @@
 # 用法:
 #   curl -fsSL https://raw.githubusercontent.com/wuliLiuyue/wxpilot/main/install.sh | bash
 #   curl -fsSL https://raw.githubusercontent.com/wuliLiuyue/wxpilot/main/install.sh | bash -s -- --version v0.1.0
-#   ./install.sh --version v0.1.0
+#   ./install.sh --version v0.1.0 --install-dir ~/.local/bin --daemon-dir ~/.wxpilot/bin
 #
 # 环境变量覆盖:
 #   WXPILOT_REPO              GitHub 仓库 (默认 wuliLiuyue/wxpilot)
-#   WXPILOT_VERSION           版本 tag (默认 latest)
+#   WXPILOT_VERSION           版本 tag (默认 latest, 解析为最新 release)
 #   WXPILOT_INSTALL_DIR       wxpilot 安装目录 (默认 ~/.local/bin)
 #   WXPILOT_DAEMON_DIR        wxp-daemon 安装目录 (默认 ~/.wxpilot/bin)
 #   WXPILOT_RELEASE_BASE_URL  覆盖下载源 (测试用, 指向本地 file:// 目录)
@@ -29,13 +29,15 @@ Usage: install.sh [options]
 Options:
   --version <tag>       Release tag to install (default: latest)
   --repo <owner/name>   GitHub repository (default: wuliLiuyue/wxpilot)
+  --install-dir <dir>   wxpilot install directory (default: ~/.local/bin)
+  --daemon-dir <dir>    wxp-daemon install directory (default: ~/.wxpilot/bin)
   -h, --help            Show this help message
 
 Environment variables:
   WXPILOT_VERSION           Same as --version
   WXPILOT_REPO              Same as --repo
-  WXPILOT_INSTALL_DIR       wxpilot install dir (default: ~/.local/bin)
-  WXPILOT_DAEMON_DIR        wxp-daemon install dir (default: ~/.wxpilot/bin)
+  WXPILOT_INSTALL_DIR       Same as --install-dir
+  WXPILOT_DAEMON_DIR        Same as --daemon-dir
   WXPILOT_RELEASE_BASE_URL  Override download base (for testing)
 EOF
 }
@@ -52,6 +54,16 @@ while [[ $# -gt 0 ]]; do
       repo="$2"
       shift 2
       ;;
+    --install-dir)
+      [[ $# -ge 2 ]] || { echo "missing value for --install-dir" >&2; exit 1; }
+      install_dir="$2"
+      shift 2
+      ;;
+    --daemon-dir)
+      [[ $# -ge 2 ]] || { echo "missing value for --daemon-dir" >&2; exit 1; }
+      daemon_dir="$2"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -65,6 +77,14 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "${HOME:-}" ]] || { echo "HOME is required" >&2; exit 1; }
+
+require_cmd() {
+  local cmd="$1"
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "缺少必要命令: $cmd" >&2
+    exit 1
+  fi
+}
 
 os="$("$uname_bin" -s)"
 arch="$("$uname_bin" -m)"
@@ -83,8 +103,16 @@ case "$arch" in
     ;;
 esac
 
+# tar / install 在解压与落盘阶段必需, 提前校验避免下载后失败
+require_cmd tar
+require_cmd install
+
 if [[ -n "${WXPILOT_RELEASE_BASE_URL:-}" ]]; then
   base_url="${WXPILOT_RELEASE_BASE_URL%/}"
+elif [[ "$version" == "latest" ]]; then
+  # GitHub 的"最新 release"重定向端点是 releases/latest/download/,
+  # 而非 releases/download/latest/ (后者要求存在名为 latest 的 tag)
+  base_url="https://github.com/${repo}/releases/latest/download"
 else
   base_url="https://github.com/${repo}/releases/download/${version}"
 fi
@@ -112,7 +140,8 @@ checksum_of() {
   elif command -v sha256sum >/dev/null 2>&1; then
     sha256sum "$file" | awk '{print $1}'
   else
-    echo ""
+    echo "缺少校验工具: 需要 shasum 或 sha256sum" >&2
+    exit 1
   fi
 }
 
@@ -122,16 +151,24 @@ trap 'rm -rf "$tmp"' EXIT
 echo "下载 $asset ..."
 download "$asset_url" "$tmp/$asset"
 
-if download "$checksums_url" "$tmp/wxpilot-checksums.txt" 2>/dev/null; then
-  expected="$(grep -F "$asset" "$tmp/wxpilot-checksums.txt" | awk '{print $1}')"
-  actual="$(checksum_of "$tmp/$asset")"
-  if [[ -n "$expected" && -n "$actual" && "$expected" != "$actual" ]]; then
-    echo "校验和不匹配: 期望 $expected, 实际 $actual" >&2
-    exit 1
-  fi
+echo "下载 wxpilot-checksums.txt ..."
+download "$checksums_url" "$tmp/wxpilot-checksums.txt"
+
+expected="$(awk -v target="$asset" '$2 == target { print $1 }' "$tmp/wxpilot-checksums.txt")"
+if [[ -z "$expected" ]]; then
+  echo "checksums 文件中缺少 $asset 的条目" >&2
+  exit 1
+fi
+actual="$(checksum_of "$tmp/$asset")"
+if [[ "$expected" != "$actual" ]]; then
+  echo "校验和不匹配: 期望 $expected, 实际 $actual" >&2
+  exit 1
 fi
 
 tar -xzf "$tmp/$asset" -C "$tmp"
+
+[[ -f "$tmp/wxpilot" ]] || { echo "归档缺少 wxpilot 二进制" >&2; exit 1; }
+[[ -f "$tmp/wxp-daemon" ]] || { echo "归档缺少 wxp-daemon 二进制" >&2; exit 1; }
 
 install -d "$install_dir" "$daemon_dir"
 install -m 755 "$tmp/wxpilot" "$install_dir/wxpilot"

@@ -57,6 +57,40 @@ else
 fi
 "$home_dir/.local/bin/wxpilot" --version | grep -F 'wxpilot 9.9.9'
 
+# 回归: 默认 latest 必须解析为 releases/latest/download/,
+# 而非 releases/download/latest/ (后者要求存在名为 latest 的 tag, 会 404)
+# 用 stub curl 捕获真实下载 URL, 复用上面的 release 产物做本地映射
+latest_log="$tmp/curl-url.log"
+mkdir -p "$tmp/stub-bin"
+cat > "$tmp/stub-bin/curl" <<'STUB'
+#!/usr/bin/env bash
+url=""
+dest=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o) dest="$2"; shift 2;;
+    -*) shift;;
+    *) url="$1"; shift;;
+  esac
+done
+echo "$url" >> "${WXPILOT_CURL_LOG:-/dev/null}"
+cp "${WXPILOT_STUB_RELEASE_DIR}/${url##*/}" "$dest"
+STUB
+chmod +x "$tmp/stub-bin/curl"
+
+WXPILOT_CURL_LOG="$latest_log" \
+WXPILOT_STUB_RELEASE_DIR="$tmp/release" \
+HOME="$tmp/home-latest" \
+PATH="$tmp/stub-bin:/usr/bin:/bin" \
+WXPILOT_RELEASE_BASE_URL="" \
+bash "$repo_root/install.sh" >/dev/null
+
+grep -F 'releases/latest/download' "$latest_log" >/dev/null
+if grep -F 'releases/download/latest' "$latest_log" >/dev/null; then
+  echo "FAIL: 解析到了错误的 releases/download/latest URL" >&2
+  exit 1
+fi
+
 # 非 macOS 应被拒绝
 cat > "$tmp/bin-uname-linux" <<'EOF'
 #!/usr/bin/env bash
