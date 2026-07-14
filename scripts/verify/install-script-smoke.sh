@@ -12,12 +12,14 @@ printf '#!/usr/bin/env bash\necho wxpilot 9.9.9 arm64\n' > "$tmp/pkg-arm64/wxpil
 printf '#!/usr/bin/env bash\necho daemon 9.9.9 arm64\n' > "$tmp/pkg-arm64/wxp-daemon"
 printf '#!/usr/bin/env bash\necho wxpilot 9.9.9 x64\n' > "$tmp/pkg-x64/wxpilot"
 printf '#!/usr/bin/env bash\necho daemon 9.9.9 x64\n' > "$tmp/pkg-x64/wxp-daemon"
+printf 'TEST LICENSE\n' > "$tmp/pkg-arm64/LICENSE"
+printf 'TEST LICENSE\n' > "$tmp/pkg-x64/LICENSE"
 chmod +x \
   "$tmp/pkg-arm64/wxpilot" "$tmp/pkg-arm64/wxp-daemon" \
   "$tmp/pkg-x64/wxpilot" "$tmp/pkg-x64/wxp-daemon"
 
-tar -czf "$tmp/release/wxpilot-darwin-arm64.tar.gz" -C "$tmp/pkg-arm64" wxpilot wxp-daemon
-tar -czf "$tmp/release/wxpilot-darwin-x64.tar.gz" -C "$tmp/pkg-x64" wxpilot wxp-daemon
+tar -czf "$tmp/release/wxpilot-darwin-arm64.tar.gz" -C "$tmp/pkg-arm64" wxpilot wxp-daemon LICENSE
+tar -czf "$tmp/release/wxpilot-darwin-x64.tar.gz" -C "$tmp/pkg-x64" wxpilot wxp-daemon LICENSE
 
 checksum_cmd() {
   if command -v shasum >/dev/null 2>&1; then
@@ -49,6 +51,7 @@ output="$(
 
 test -x "$home_dir/.local/bin/wxpilot"
 test -x "$home_dir/.wxpilot/bin/wxp-daemon"
+test -f "$home_dir/.wxpilot/LICENSE"
 
 if [[ "$(uname -m)" == "arm64" ]]; then
   printf '%s' "$output" | grep -F "installed wxpilot from wxpilot-darwin-arm64.tar.gz"

@@ -87,8 +87,9 @@ package_one() {
   mkdir -p "$stage_dir"
   install -m 755 "$cli_src" "$stage_dir/wxpilot"
   install -m 755 "$daemon_src" "$stage_dir/wxp-daemon"
+  install -m 644 "$repo_root/LICENSE" "$stage_dir/LICENSE"
 
-  tar -czf "$output_dir/$archive_name" -C "$stage_dir" wxpilot wxp-daemon
+  tar -czf "$output_dir/$archive_name" -C "$stage_dir" wxpilot wxp-daemon LICENSE
 }
 
 package_one "aarch64-apple-darwin" "wxpilot-darwin-arm64.tar.gz"
