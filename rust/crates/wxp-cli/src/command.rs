@@ -1,31 +1,7 @@
 use std::convert::TryFrom;
 
-use crate::args::{Cli, Commands, DaemonCommands, DaemonKindArg, FindArgs, NetCommands, StartArgs};
+use crate::args::{Cli, Commands, DaemonCommands, FindArgs, NetCommands, StartArgs};
 use crate::error::CliError;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DaemonKindOption {
-    Rust,
-    Ts,
-}
-
-impl DaemonKindOption {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Rust => "rust",
-            Self::Ts => "ts",
-        }
-    }
-}
-
-impl From<DaemonKindArg> for DaemonKindOption {
-    fn from(value: DaemonKindArg) -> Self {
-        match value {
-            DaemonKindArg::Rust => Self::Rust,
-            DaemonKindArg::Ts => Self::Ts,
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CliCommand {
@@ -130,10 +106,6 @@ impl TryFrom<Cli> for CliCommand {
     type Error = CliError;
 
     fn try_from(cli: Cli) -> Result<Self, Self::Error> {
-        if matches!(cli.daemon_kind, DaemonKindArg::Ts) {
-            return Err(CliError::UnsupportedDaemonKind);
-        }
-
         let json = cli.json;
         let timeout_ms = cli.timeout;
 

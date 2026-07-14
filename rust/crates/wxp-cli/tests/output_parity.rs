@@ -65,7 +65,6 @@ fn renders_generic_human_output() {
 
 #[test]
 fn cli_error_exit_codes_match_minimal_contract() {
-    assert_eq!(CliError::UnsupportedDaemonKind.exit_code(), 2);
     assert_eq!(CliError::Message("boom".into()).exit_code(), 1);
     assert_eq!(
         CliError::DaemonUnavailable("daemon unavailable".into()).exit_code(),
