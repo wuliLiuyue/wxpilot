@@ -1,12 +1,12 @@
 .PHONY: build test lint rust-cli-build rust-cli-help rust-test local-build local-install local-install-test local-install-all public-release-package public-distribution-test
 build:
-	pnpm build
+	cd rust && cargo build
 
 test:
-	pnpm test
+	cd rust && cargo test --workspace
 
 lint:
-	pnpm lint
+	cd rust && cargo fmt -- --check
 
 rust-cli-build:
 	cd rust && cargo build -p wxp-cli --bin wxpilot
@@ -25,7 +25,6 @@ local-install:
 
 local-install-test:
 	cd rust && cargo test -p wxp-cli locate_daemon_binary_ -- --nocapture
-	cd rust && cargo test -p wxp-cli --test readme_migration
 	bash scripts/verify/local-build-smoke.sh
 	bash scripts/verify/local-install-smoke.sh
 

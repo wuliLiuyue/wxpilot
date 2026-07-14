@@ -1739,13 +1739,6 @@ name = "wxp-common"
 version = "0.1.0"
 
 [[package]]
-name = "wxp-compat"
-version = "0.1.0"
-dependencies = [
- "wxp-common",
-]
-
-[[package]]
 name = "wxp-daemon"
 version = "0.1.0"
 dependencies = [
