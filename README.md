@@ -108,7 +108,7 @@ cargo build -p wxp-daemon --bin wxp-daemon
 ./target/debug/wxpilot --version
 ```
 
-> 仓库内 `packages/` 保留的 TypeScript CLI/daemon 仅为迁移期对照实现，不再是主使用路径。
+> `packages/web` 为官网（your-domain.com）源码，与 CLI 无关，源码构建无需关注。
 
 ## 快速开始
 
@@ -256,7 +256,6 @@ wxpilot daemon restart
 --timeout <ms>    默认 10000ms
 --verbose         详细日志
 --json            JSON 格式输出
---daemon-kind     rust（默认）| ts
 ```
 
 ## 网络代理与 mock
@@ -378,7 +377,6 @@ make public-release-package VERSION=v0.1.0
 欢迎提交 Issue 和 Pull Request。
 
 - 主实现语言为 **Rust**，默认修改 `rust/crates/wxp-cli` 与 `rust/crates/wxp-daemon`
-- `packages/` 下的 TypeScript 代码仅作迁移期对照，不要在其上扩展新能力
 - 提交前请确保 `make rust-test` 通过
 - 仓库未配置 CI，请本地运行测试后再提交
 

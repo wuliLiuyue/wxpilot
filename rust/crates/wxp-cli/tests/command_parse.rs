@@ -1,6 +1,6 @@
 use clap::Parser;
 use wxp_cli::args::Cli;
-use wxp_cli::command::{CliCommand, DaemonKindOption};
+use wxp_cli::command::CliCommand;
 
 #[test]
 fn parses_start_command_with_existing_flags() {
@@ -184,12 +184,4 @@ fn parses_state_shot_daemon_restart_and_wx_smoke_cases() {
             args: vec!["\"k\"".into(), "123".into(), "true".into()],
         }
     );
-}
-
-#[test]
-fn keeps_daemon_kind_flag_but_rejects_ts_at_normalize_time() {
-    let cli = Cli::try_parse_from(["wxpilot", "--daemon-kind", "ts", "status"]).expect("parse");
-    let error = CliCommand::try_from(cli).expect_err("ts should be rejected");
-    assert_eq!(error.to_string(), "ts daemon is no longer supported");
-    assert_eq!(DaemonKindOption::Ts.as_str(), "ts");
 }

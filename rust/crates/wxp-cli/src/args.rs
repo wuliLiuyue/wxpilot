@@ -1,17 +1,8 @@
-use clap::{Args, Parser, Subcommand, ValueEnum};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub enum DaemonKindArg {
-    Rust,
-    Ts,
-}
+use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(name = "wxpilot", version, about = "AI Agent 微信小程序自动化 CLI")]
 pub struct Cli {
-    #[arg(long = "daemon-kind", default_value = "rust")]
-    pub daemon_kind: DaemonKindArg,
-
     #[arg(long, default_value_t = 10_000)]
     pub timeout: u64,
 

@@ -11,29 +11,21 @@ wxpilot 是面向 AI Agent 的微信小程序自动化 CLI 工具。通过 Unix 
 ### 构建与开发
 
 ```bash
-# Rust 主链路构建
+# 构建
 cd rust && cargo build -p wxp-cli --bin wxpilot
 cd rust && cargo build -p wxp-daemon --bin wxp-daemon
 
-# Rust 主链路测试
+# 测试
 make rust-test
 
 # 查看 Rust CLI 帮助
 make rust-cli-help
 ```
 
-### 迁移期对照命令
-
-```bash
-# 仅在迁移期契约回归或对照排查时使用
-pnpm test
-pnpm exec vitest run packages/contracts/tests/cli-fallback.spec.ts packages/contracts/tests/daemon-contract.spec.ts
-```
-
 ### 运行 CLI（需先构建）
 
 ```bash
-# Rust CLI 为默认入口
+# Rust CLI 入口
 cd rust && cargo run -p wxp-cli --bin wxpilot -- --help
 
 # 或直接运行构建产物
@@ -80,12 +72,6 @@ rust/target/debug/wxpilot start /path/to/mp --proxy  # 抓包会话
 - `src/net_path.rs` - `net.start/stop/log/mock/unmock/clear/install-ca`
 - 共享 crate：`wxp-rpc`、`wxp-common`、`wxp-snapshot`、`wxp-ref-store`、`wxp-proxy`、`wxp-store`
 
-### TypeScript 对照实现（`packages/`）
-
-- `packages/cli/`、`packages/daemon/`、`packages/contracts/` 仍保留
-- 仅用于迁移期契约回归、行为对照和历史实现参考
-- 修改主行为时，应优先检查和更新 Rust 实现，不要默认在 TS 实现上继续扩展新能力
-
 ### 项目路径自动检测
 
 `wxpilot start` 的 `projectPath` 参数为可选：
@@ -110,12 +96,11 @@ rust/target/debug/wxpilot start /path/to/mp --proxy  # 抓包会话
 
 ## 重要约束
 
-1. **Rust 为主实现**：默认修改 `rust/crates/wxp-cli` 和 `rust/crates/wxp-daemon`，TS 代码仅作迁移期对照
+1. **Rust 为主实现**：默认修改 `rust/crates/wxp-cli` 和 `rust/crates/wxp-daemon`
 2. **Unix Domain Socket**：Rust CLI 与 Rust daemon 通信依赖 `~/.wxpilot/rust-daemon.sock`
 3. **Daemon 生命周期**：首次 CLI 调用时启动，30 分钟空闲后自动退出
 4. **代理抓包主流程**：优先使用 `wxpilot start <projectPath> --proxy [--https]`，不要再把手工 `net start` 当默认主流程
 5. **HTTPS 代理**：首次使用 `--https` 模式需运行 `wxpilot net install-ca` 安装 CA 证书并重启开发者工具
-6. **pnpm 仍存在**：仅用于迁移期对照测试与历史 TS 工作流，不再是主运行链路
 
 ## 低 token 输出设计
 
@@ -133,18 +118,12 @@ rust/target/debug/wxpilot start /path/to/mp --proxy  # 抓包会话
 
 ## 测试
 
-Rust 主链路测试：
+测试命令：
 
 ```bash
 make rust-test
 cd rust && cargo test -p wxp-daemon --test read_path
 cd rust && cargo test -p wxp-cli --test command_parse --test daemon_client --test status_smoke
-```
-
-迁移期对照测试：
-
-```bash
-pnpm exec vitest run packages/contracts/tests/cli-fallback.spec.ts packages/contracts/tests/daemon-contract.spec.ts
 ```
 
 ## 技术栈
@@ -158,4 +137,3 @@ pnpm exec vitest run packages/contracts/tests/cli-fallback.spec.ts packages/cont
 | Daemon - snapshot | Rust `wxp-snapshot` |
 | 构建 | Cargo |
 | 主测试 | cargo test |
-| 迁移期对照测试 | vitest |
