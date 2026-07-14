@@ -22,14 +22,14 @@ fn mock_registry_matches_https_default_port_urls() {
     let registry = MockRegistry::default();
     registry.upsert(
         "POST",
-        "https://testapi.casamiel.cn/api/v2/WaiMai/Product/GetProductList",
+        "https://api.example.com/v1/products",
         r#"{"status":200,"body":{"mocked":true}}"#,
     );
 
     assert!(registry
         .match_url(
             "POST",
-            "https://testapi.casamiel.cn:443/api/v2/WaiMai/Product/GetProductList",
+            "https://api.example.com:443/v1/products",
         )
         .is_some());
 }
