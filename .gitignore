@@ -152,7 +152,7 @@ vite.config.ts.timestamp-*
 # Codex
 .codex/
 
-# License materials
+# Legacy license materials (contains private keys, never commit)
 .wxpilot-license/
 
 # data and backups

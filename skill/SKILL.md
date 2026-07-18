@@ -1,6 +1,6 @@
 ---
 name: wxpilot
-description: 微信小程序自动化操作技能。当需要通过 wxpilot CLI 操作微信小程序时使用，包括连接开发者工具、页面导航、元素交互（点击/输入/滚动）、读取页面状态、网络代理与 mock。默认使用 Rust CLI / Rust daemon；运行 wxpilot start 前，优先检查当前工作目录下是否存在含 project.config.json 的 dist 子目录，有则可省略路径参数直接运行；多个候选时 CLI 会交互提示选择，避免在对话中询问用户。
+description: 微信小程序自动化操作技能。当需要通过 wxpilot CLI 操作微信小程序时使用，包括连接开发者工具、页面导航、元素交互（点击/输入/滚动）、读取页面状态、网络代理与 mock。使用 Rust CLI / Rust daemon；运行 wxpilot start 前，优先检查当前工作目录下是否存在含 project.config.json 的 dist 子目录，有则可省略路径参数直接运行；多个候选时 CLI 会交互提示选择，避免在对话中询问用户。
 ---
 
 # wxpilot — AI Agent 使用指南

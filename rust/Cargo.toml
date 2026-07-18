@@ -2,7 +2,6 @@
 members = [
   "crates/wxp-common",
   "crates/wxp-rpc",
-  "crates/wxp-compat",
   "crates/wxp-daemon",
   "crates/wxp-automator-protocol",
   "crates/wxp-automator-client",
@@ -10,8 +9,6 @@ members = [
   "crates/wxp-ref-store",
   "crates/wxp-proxy",
   "crates/wxp-store",
-  "crates/wxp-license",
-  "crates/wxp-license-server",
   "crates/wxp-cli",
 ]
 resolver = "2"
