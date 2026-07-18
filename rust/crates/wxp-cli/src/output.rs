@@ -1,3 +1,20 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// wxpilot - 面向 AI Agent 的微信小程序自动化 CLI
+// Copyright (C) 2026  wuliLiuyue
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as
+// published by the Free Software Foundation, either version 3 of the
+// License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 use serde_json::{Map, Value};
 use wxp_common::MAX_OUTPUT_CHARS;
 
@@ -32,28 +49,11 @@ pub fn render_command_ok(command: &CliCommand, payload: &Value, mode: OutputMode
     }
 
     match command {
-        CliCommand::Activate { .. } => render_activate(payload),
         CliCommand::NetStart { .. } => render_net_start(payload),
         CliCommand::NetLog { .. } => render_net_log(payload),
         CliCommand::NetInstallCa => render_net_install_ca(payload),
         _ => render_ok(payload, mode),
     }
-}
-
-fn render_activate(payload: &Value) -> String {
-    let Some(path) = payload.get("path").and_then(Value::as_str) else {
-        return render_ok(payload, OutputMode::Human);
-    };
-    let license_id = payload
-        .get("licenseId")
-        .and_then(Value::as_str)
-        .unwrap_or("-");
-    let machine_fingerprint = payload
-        .get("machineFingerprint")
-        .and_then(Value::as_str)
-        .unwrap_or("-");
-
-    format!("OK: 激活成功\nlicense: {license_id}\nmachine: {machine_fingerprint}\npath: {path}")
 }
 
 pub fn render_error(message: &str, extra: Option<Value>, mode: OutputMode) -> String {

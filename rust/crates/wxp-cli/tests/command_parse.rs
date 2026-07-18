@@ -1,19 +1,23 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// wxpilot - 面向 AI Agent 的微信小程序自动化 CLI
+// Copyright (C) 2026  wuliLiuyue
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as
+// published by the Free Software Foundation, either version 3 of the
+// License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 use clap::Parser;
 use wxp_cli::args::Cli;
-use wxp_cli::command::{CliCommand, DaemonKindOption};
-
-#[test]
-fn parses_activate_command() {
-    let cli = Cli::try_parse_from(["wxpilot", "activate", "lic-live-001"]).expect("parse");
-
-    let command = CliCommand::try_from(cli).expect("normalize");
-    assert_eq!(
-        command,
-        CliCommand::Activate {
-            key: "lic-live-001".into(),
-        }
-    );
-}
+use wxp_cli::command::CliCommand;
 
 #[test]
 fn parses_start_command_with_existing_flags() {
@@ -197,12 +201,4 @@ fn parses_state_shot_daemon_restart_and_wx_smoke_cases() {
             args: vec!["\"k\"".into(), "123".into(), "true".into()],
         }
     );
-}
-
-#[test]
-fn keeps_daemon_kind_flag_but_rejects_ts_at_normalize_time() {
-    let cli = Cli::try_parse_from(["wxpilot", "--daemon-kind", "ts", "status"]).expect("parse");
-    let error = CliCommand::try_from(cli).expect_err("ts should be rejected");
-    assert_eq!(error.to_string(), "ts daemon is no longer supported");
-    assert_eq!(DaemonKindOption::Ts.as_str(), "ts");
 }

@@ -1,39 +1,27 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// wxpilot - 面向 AI Agent 的微信小程序自动化 CLI
+// Copyright (C) 2026  wuliLiuyue
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as
+// published by the Free Software Foundation, either version 3 of the
+// License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 use std::convert::TryFrom;
 
-use crate::args::{
-    ActivateArgs, Cli, Commands, DaemonCommands, DaemonKindArg, FindArgs, NetCommands, StartArgs,
-};
+use crate::args::{Cli, Commands, DaemonCommands, FindArgs, NetCommands, StartArgs};
 use crate::error::CliError;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DaemonKindOption {
-    Rust,
-    Ts,
-}
-
-impl DaemonKindOption {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Rust => "rust",
-            Self::Ts => "ts",
-        }
-    }
-}
-
-impl From<DaemonKindArg> for DaemonKindOption {
-    fn from(value: DaemonKindArg) -> Self {
-        match value {
-            DaemonKindArg::Rust => Self::Rust,
-            DaemonKindArg::Ts => Self::Ts,
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CliCommand {
-    Activate {
-        key: String,
-    },
     Start {
         project_path: Option<String>,
         cli_path: Option<String>,
@@ -135,15 +123,10 @@ impl TryFrom<Cli> for CliCommand {
     type Error = CliError;
 
     fn try_from(cli: Cli) -> Result<Self, Self::Error> {
-        if matches!(cli.daemon_kind, DaemonKindArg::Ts) {
-            return Err(CliError::UnsupportedDaemonKind);
-        }
-
         let json = cli.json;
         let timeout_ms = cli.timeout;
 
         match cli.command {
-            Commands::Activate(ActivateArgs { key }) => Ok(Self::Activate { key }),
             Commands::Start(StartArgs {
                 project_path,
                 cli_path,
@@ -241,11 +224,5 @@ impl TryFrom<Cli> for CliCommand {
                 DaemonCommands::Restart => Ok(Self::DaemonRestart),
             },
         }
-    }
-}
-
-impl CliCommand {
-    pub fn is_license_exempt(&self) -> bool {
-        matches!(self, Self::Activate { .. })
     }
 }
