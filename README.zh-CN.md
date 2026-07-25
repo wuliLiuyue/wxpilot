@@ -112,7 +112,7 @@ cargo build -p wxp-daemon --bin wxp-daemon
 ./target/debug/wxpilot --version
 ```
 
-> `packages/web` 为官网（your-domain.com）源码，与 CLI 无关，源码构建无需关注。
+> `packages/web` 为官网源码，与 CLI 无关，源码构建无需关注。
 
 ## 快速开始
 

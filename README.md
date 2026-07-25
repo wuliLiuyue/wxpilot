@@ -112,7 +112,7 @@ cargo build -p wxp-daemon --bin wxp-daemon
 ./target/debug/wxpilot --version
 ```
 
-> `packages/web` is the website (your-domain.com) source, unrelated to the CLI — you can ignore it when building from source.
+> `packages/web` is the website source, unrelated to the CLI — you can ignore it when building from source.
 
 ## Quick Start
 
