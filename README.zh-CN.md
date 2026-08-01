@@ -366,7 +366,7 @@ make public-release-package VERSION=v0.1.0
 
 ## AI Agent 集成
 
-仓库内置 [`skill/SKILL.md`](skill/SKILL.md)，是一份面向 AI Agent 的完整使用指南，包含：
+仓库内置 [`skills/wxpilot/SKILL.md`](skills/wxpilot/SKILL.md)，是一份面向 AI Agent 的完整使用指南，包含：
 
 - 项目路径检测的 Agent 决策逻辑
 - 典型 Agent 工作流（启动 → 查找 → 交互 → 断言 → 截图）
