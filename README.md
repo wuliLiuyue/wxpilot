@@ -37,6 +37,7 @@
 - [Architecture](#architecture)
 - [Development](#development)
 - [AI Agent Integration](#ai-agent-integration)
+- [MCP Integration](#mcp-integration)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -49,6 +50,7 @@
 - **Built-in proxy capture**: `--proxy` spins up an HTTP/HTTPS MITM proxy in one command, supporting request mocking and body inspection.
 - **JSON mode**: `--json` emits structured results for easy parsing by programs/Agents.
 - **Managed daemon**: The CLI auto-spawns a background daemon on first call, communicating over a Unix socket, and auto-exits after 30 min idle.
+- **Recommended Agent integration**: Use the Skill + CLI workflow as the primary integration path; an optional MCP stdio adapter is available for MCP-based hosts.
 
 ## How It Works
 
@@ -375,6 +377,40 @@ The repo ships [`skills/wxpilot/SKILL.md`](skills/wxpilot/SKILL.md), a complete 
 - Low-token usage guidelines
 
 Reference this file directly as a skill description when integrating with an Agent.
+
+For new Agent integrations, prefer Skill + CLI: the Skill provides the workflow guidance and the CLI remains the stable execution interface. This path has the smallest integration surface and keeps the full CLI behavior available.
+
+## MCP Integration
+
+MCP is supported as an optional integration layer for hosts that already manage tools through MCP.
+
+Build the adapter from the repository root:
+
+```bash
+pnpm install
+pnpm --filter @wxpilot/mcp build
+```
+
+Example MCP client configuration:
+
+```json
+{
+  "mcpServers": {
+    "wxpilot": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/wxpilot/packages/mcp/dist/index.js"
+      ],
+      "env": {
+        "WXPILOT_BIN": "/absolute/path/to/wxpilot/rust/target/debug/wxpilot",
+        "WXPILOT_CWD": "/absolute/path/to/miniprogram"
+      }
+    }
+  }
+}
+```
+
+The adapter exposes one tool, `wxpilot_execute`, and supports the existing connection, navigation, interaction, state, screenshot, JavaScript, wx API, and network operations. `start` requires an explicit `projectPath`; daemon stop and restart are intentionally not exposed. See [`packages/mcp/README.md`](packages/mcp/README.md) and [`packages/mcp/README.zh-CN.md`](packages/mcp/README.zh-CN.md) for the complete configuration and development guide.
 
 ## Contributing
 

@@ -37,6 +37,7 @@
 - [架构](#架构)
 - [开发](#开发)
 - [AI Agent 集成](#ai-agent-集成)
+- [MCP 集成](#mcp-集成)
 - [贡献](#贡献)
 - [许可证](#许可证)
 
@@ -49,6 +50,7 @@
 - **内置代理抓包**：`--proxy` 一键启动 HTTP/HTTPS MITM 代理，支持请求 mock 与 body 查看
 - **JSON 模式**：`--json` 输出结构化结果，便于程序/Agent 解析
 - **Daemon 托管**：CLI 首次调用自动拉起后台 daemon，Unix Socket 通信，30 分钟空闲自动退出
+- **推荐 Agent 接入方式**：优先使用 Skill + CLI；对于已经采用 MCP 管理工具的宿主，提供可选的 MCP stdio 适配器
 
 ## 工作原理
 
@@ -375,6 +377,40 @@ make public-release-package VERSION=v0.1.0
 - 低 token 使用准则
 
 接入 Agent 时可直接引用该文件作为技能说明。
+
+新的 Agent 集成建议优先采用 Skill + CLI：Skill 提供完整工作流说明，CLI 作为稳定的执行接口。该方式集成面最小，并且可以直接使用 CLI 的全部能力。
+
+## MCP 集成
+
+对于已经通过 MCP 管理工具的宿主，wxpilot 同时提供可选的 MCP 集成层。
+
+在仓库根目录构建 MCP 适配器：
+
+```bash
+pnpm install
+pnpm --filter @wxpilot/mcp build
+```
+
+MCP 客户端配置示例：
+
+```json
+{
+  "mcpServers": {
+    "wxpilot": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/wxpilot/packages/mcp/dist/index.js"
+      ],
+      "env": {
+        "WXPILOT_BIN": "/absolute/path/to/wxpilot/rust/target/debug/wxpilot",
+        "WXPILOT_CWD": "/absolute/path/to/miniprogram"
+      }
+    }
+  }
+}
+```
+
+适配器只暴露一个工具 `wxpilot_execute`，支持现有的连接、导航、交互、状态、截图、JavaScript、wx API 和网络操作。`start` 必须显式传入 `projectPath`；`daemon stop` 和 `daemon restart` 不通过 MCP 暴露。完整配置与开发说明见 [`packages/mcp/README.md`](packages/mcp/README.md) 和 [`packages/mcp/README.zh-CN.md`](packages/mcp/README.zh-CN.md)。
 
 ## 贡献
 
