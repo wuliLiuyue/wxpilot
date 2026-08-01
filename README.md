@@ -366,7 +366,7 @@ Upload the three files under `dist/public-release/<version>/` (two tar.gz archiv
 
 ## AI Agent Integration
 
-The repo ships [`skill/SKILL.md`](skill/SKILL.md), a complete usage guide for AI Agents, covering:
+The repo ships [`skills/wxpilot/SKILL.md`](skills/wxpilot/SKILL.md), a complete usage guide for AI Agents, covering:
 
 - Agent decision logic for project path detection
 - A typical Agent workflow (start → find → interact → assert → screenshot)
