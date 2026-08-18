@@ -1,0 +1,44 @@
+{
+  "name": "@wxpilot/dsh",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "README.md",
+    "README.zh-CN.md",
+    "cordis.patch.yml",
+    "dist"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "build": "pnpm --filter @wxpilot/shared build && tsc -p tsconfig.build.json",
+    "dev": "pnpm build",
+    "test": "pnpm --filter @wxpilot/shared build && tsc -p tsconfig.test.json && node --test .test-dist/test/*.test.js",
+    "typecheck": "pnpm --filter @wxpilot/shared build && tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@wxpilot/shared": "workspace:*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.1 <5",
+    "@deepseek-ai/dsh-tools": ">=0.1.0-rc.6 <0.2.0",
+    "@deepseek-ai/schemastery": ">=3.18.1 <4"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/dsh-subprocess": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-system-prompt": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
+    "@deepseek-ai/schemastery": "3.18.1",
+    "@types/node": "20.19.37",
+    "typescript": "5.9.3"
+  }
+}

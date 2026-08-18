@@ -38,6 +38,7 @@
 - [Development](#development)
 - [AI Agent Integration](#ai-agent-integration)
 - [MCP Integration](#mcp-integration)
+- [dsh Integration](#dsh-integration)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -411,6 +412,17 @@ Example MCP client configuration:
 ```
 
 The adapter exposes one tool, `wxpilot_execute`, and supports the existing connection, navigation, interaction, state, screenshot, JavaScript, wx API, and network operations. `start` requires an explicit `projectPath`; daemon stop and restart are intentionally not exposed. See [`packages/mcp/README.md`](packages/mcp/README.md) and [`packages/mcp/README.zh-CN.md`](packages/mcp/README.zh-CN.md) for the complete configuration and development guide.
+
+## dsh Integration
+
+A native [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) bundle plugin exposes wxpilot as one model-facing `wxpilot` tool: it drives the Rust CLI directly through the `ctx.subprocess` seam, with typed schemas, a canonical JSON result, and a terminal card.
+
+```sh
+pnpm dsh:build
+dsh plugin --profile demo add ./packages/dsh
+```
+
+The plugin shares its argv whitelist with the MCP adapter through `@wxpilot/shared`; JS-evaluating operations (`run`, `wx`) stay hidden unless `enableJsEval: true` is configured. See [`packages/dsh/README.md`](packages/dsh/README.md) and [`packages/dsh/README.zh-CN.md`](packages/dsh/README.zh-CN.md) for loading, configuration, and development.
 
 ## Contributing
 

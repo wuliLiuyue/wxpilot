@@ -15,15 +15,16 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "dev": "tsc -p tsconfig.build.json && node dist/index.js",
+    "build": "pnpm --filter @wxpilot/shared build && tsc -p tsconfig.build.json",
+    "dev": "pnpm build && node dist/index.js",
     "start": "node dist/index.js",
-    "test": "tsc -p tsconfig.test.json && node --test .test-dist/test/*.test.js",
-    "typecheck": "tsc -p tsconfig.json",
-    "prepack": "tsc -p tsconfig.build.json"
+    "test": "pnpm --filter @wxpilot/shared build && tsc -p tsconfig.test.json && node --test .test-dist/test/*.test.js",
+    "typecheck": "pnpm --filter @wxpilot/shared build && tsc -p tsconfig.json",
+    "prepack": "pnpm build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
+    "@wxpilot/shared": "workspace:*",
     "zod": "^3.25.76"
   },
   "devDependencies": {
