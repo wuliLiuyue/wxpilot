@@ -67,10 +67,15 @@ pub struct AutomatorConnection {
 
 impl AutomatorConnection {
     const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+    // On a half-open connection (TCP connects but the handshake never
+    // responds), connect_async may never return. A timeout is required, or a
+    // single connect would stall every request in the serial daemon loop.
+    const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
     pub async fn connect(url: &str) -> Result<Self, AutomatorClientError> {
-        let (stream, _) = connect_async(url)
+        let (stream, _) = timeout(Self::DEFAULT_CONNECT_TIMEOUT, connect_async(url))
             .await
+            .map_err(|_| AutomatorClientError::Connect(format!("connect_timed_out: {url}")))?
             .map_err(|error| AutomatorClientError::Connect(error.to_string()))?;
         let (writer, mut reader) = stream.split();
         let pending = Arc::new(Mutex::new(HashMap::<String, PendingSender>::new()));
