@@ -1,6 +1,6 @@
 {
   "name": "@wxpilot/dsh",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "exports": {
@@ -22,7 +22,8 @@
     "build": "pnpm --filter @wxpilot/shared build && tsc -p tsconfig.build.json",
     "dev": "pnpm build",
     "test": "pnpm --filter @wxpilot/shared build && tsc -p tsconfig.test.json && node --test .test-dist/test/*.test.js",
-    "typecheck": "pnpm --filter @wxpilot/shared build && tsc -p tsconfig.json"
+    "typecheck": "pnpm --filter @wxpilot/shared build && tsc -p tsconfig.json",
+    "prepack": "pnpm build"
   },
   "dependencies": {
     "@wxpilot/shared": "workspace:*"
