@@ -1,0 +1,13 @@
+# wxpilot bundle layer: registers the model-facing `wxpilot` tool that drives
+# the Rust CLI over the `ctx.subprocess` seam. wxpilot requires WeChat DevTools
+# (macOS only), so the row disables itself on other platforms. A later layer
+# replaces the whole `config` value, so every key is restated here.
+- insert:
+    - id: wxpilot
+      name: '@wxpilot/dsh'
+      disabled: !!js process.platform !== 'darwin'
+      config:
+        binary: wxpilot
+        timeoutMs: 120000
+        maxResultChars: 16000
+        enableJsEval: false

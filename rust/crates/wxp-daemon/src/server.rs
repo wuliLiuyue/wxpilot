@@ -116,11 +116,19 @@ impl ServerState {
             io::Error::new(io::ErrorKind::NotConnected, "automator_not_connected")
         })?;
         let request_tag = request_id.to_string();
+        eprintln!("[automator-req] {method} {params}");
         connection
             .send_with_id(format!("{request_tag}:{suffix}"), method, params)
             .await
             .map_err(|error| {
-                let _ = self.clear_connection_state();
+                // Business errors from the server (e.g. no such element) do
+                // not invalidate the connection; only transport errors do.
+                if !matches!(
+                    error,
+                    wxp_automator_client::AutomatorClientError::Protocol(_)
+                ) {
+                    let _ = self.clear_connection_state();
+                }
                 io::Error::other(error)
             })
     }

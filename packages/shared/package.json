@@ -1,0 +1,22 @@
+{
+  "name": "@wxpilot/shared",
+  "version": "0.2.0",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": "./dist/command.js"
+  },
+  "types": "./dist/command.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "tsc -p tsconfig.test.json && node --test .test-dist/test/*.test.js",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.37",
+    "typescript": "5.9.3"
+  }
+}

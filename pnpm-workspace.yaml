@@ -1,3 +1,5 @@
 packages:
   - packages/web
   - packages/mcp
+  - packages/shared
+  - packages/dsh

@@ -346,19 +346,54 @@ async fn resolve_element_request(
         .get("pageId")
         .cloned()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "page_id_missing"))?;
-    let element = state
-        .call_automator(
-            request_id,
-            "element_lookup",
-            "Page.getElement",
-            json!({
-                "pageId": page_id,
-                "selector": selector,
-            }),
-        )
-        .await?;
+    let element = query_element_fallback(state, request_id, &page_id, &selector).await?;
 
     element_request_params(page_id, &element)
+}
+
+// DevTools 2.02+ (Electron core) no longer exposes the page root as a
+// queryable element, so selectors prefixed with "page >" cannot match.
+// Fall back in order: full selector -> strip "page >" prefix -> last tag.class.
+async fn query_element_fallback(
+    state: &mut ServerState,
+    request_id: &Value,
+    page_id: &Value,
+    selector: &str,
+) -> io::Result<Value> {
+    let mut candidates = vec![selector.to_string()];
+    if let Some(rest) = selector.strip_prefix("page > ") {
+        candidates.push(rest.to_string());
+    }
+    if let Some(last) = selector.rsplit(" > ").next() {
+        if !candidates.iter().any(|candidate| candidate == last) {
+            candidates.push(last.to_string());
+        }
+    }
+
+    let mut last_error = None;
+    for (index, candidate) in candidates.iter().enumerate() {
+        let suffix = if index == 0 {
+            "element_lookup".to_string()
+        } else {
+            format!("element_lookup_fallback_{index}")
+        };
+        match state
+            .call_automator(
+                request_id,
+                &suffix,
+                "Page.getElement",
+                json!({
+                    "pageId": page_id.clone(),
+                    "selector": candidate,
+                }),
+            )
+            .await
+        {
+            Ok(element) => return Ok(element),
+            Err(error) => last_error = Some(error),
+        }
+    }
+    Err(last_error.unwrap_or_else(|| io::Error::other("element_lookup_failed")))
 }
 
 async fn current_page(state: &mut ServerState, request_id: &Value) -> io::Result<Value> {

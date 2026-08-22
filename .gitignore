@@ -82,7 +82,7 @@ out
 # Nuxt.js build / generate output
 .nuxt
 dist
-packages/mcp/.test-dist/
+packages/*/.test-dist/
 rust/target/
 
 # Gatsby files

@@ -38,6 +38,7 @@
 - [开发](#开发)
 - [AI Agent 集成](#ai-agent-集成)
 - [MCP 集成](#mcp-集成)
+- [dsh 集成](#dsh-集成)
 - [贡献](#贡献)
 - [许可证](#许可证)
 
@@ -411,6 +412,17 @@ MCP 客户端配置示例：
 ```
 
 适配器只暴露一个工具 `wxpilot_execute`，支持现有的连接、导航、交互、状态、截图、JavaScript、wx API 和网络操作。`start` 必须显式传入 `projectPath`；`daemon stop` 和 `daemon restart` 不通过 MCP 暴露。完整配置与开发说明见 [`packages/mcp/README.md`](packages/mcp/README.md) 和 [`packages/mcp/README.zh-CN.md`](packages/mcp/README.zh-CN.md)。
+
+## dsh 集成
+
+面向 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）提供原生组合包（bundle）插件，把 wxpilot 暴露为一个面向模型的 `wxpilot` 工具：经 `ctx.subprocess` seam 直接调用 Rust CLI，带强类型 schema、规范 JSON 结果与 terminal 卡片。
+
+```sh
+pnpm dsh:build
+dsh plugin --profile demo add ./packages/dsh
+```
+
+插件与 MCP 适配器通过 `@wxpilot/shared` 共享 argv 白名单；`run`/`wx` 等执行 JS 的操作默认不暴露，需配置 `enableJsEval: true` 开启。加载方式、配置项与开发说明见 [`packages/dsh/README.md`](packages/dsh/README.md) 和 [`packages/dsh/README.zh-CN.md`](packages/dsh/README.zh-CN.md)。
 
 ## 贡献
 

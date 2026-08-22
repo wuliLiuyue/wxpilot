@@ -334,6 +334,41 @@ async fn read_state_data(state: &mut ServerState, request_id: &Value) -> io::Res
     Ok(data.get("data").cloned().unwrap_or(Value::Null))
 }
 
+// DevTools 2.02+ (Electron core) no longer exposes the page root as a
+// queryable element; selector "page" returns no such element. Fall back to
+// "*" to take the first top-level node in document order.
+async fn query_root_element(
+    state: &mut ServerState,
+    request_id: &Value,
+    page_id: Value,
+) -> io::Result<Value> {
+    const ROOT_SELECTORS: [&str; 2] = ["page", "*"];
+    let mut last_error = None;
+    for (index, selector) in ROOT_SELECTORS.iter().enumerate() {
+        let suffix = if index == 0 {
+            "root_element"
+        } else {
+            "root_element_fallback"
+        };
+        match state
+            .call_automator(
+                request_id,
+                suffix,
+                "Page.getElement",
+                json!({
+                    "pageId": page_id.clone(),
+                    "selector": selector,
+                }),
+            )
+            .await
+        {
+            Ok(element) => return Ok(element),
+            Err(error) => last_error = Some(error),
+        }
+    }
+    Err(last_error.unwrap_or_else(|| io::Error::other("root_element_query_failed")))
+}
+
 async fn build_snapshot(
     state: &mut ServerState,
     request_id: &Value,
@@ -360,17 +395,7 @@ async fn build_snapshot(
         )
         .await
         .ok();
-    let root_element = state
-        .call_automator(
-            request_id,
-            "root_element",
-            "Page.getElement",
-            json!({
-                "pageId": page_id,
-                "selector": "page",
-            }),
-        )
-        .await?;
+    let root_element = query_root_element(state, request_id, page_id.clone()).await?;
     let mut wxml_params = element_request_params(page_id, &root_element)?;
     wxml_params.insert("type".into(), Value::String("outer".to_string()));
     let wxml = state
