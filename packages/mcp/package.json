@@ -23,7 +23,7 @@
     "prepack": "pnpm build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.30.0",
+    "@modelcontextprotocol/sdk": "1.32.0",
     "@wxpilot/shared": "workspace:*",
     "zod": "^3.25.76"
   },
